@@ -1,0 +1,12 @@
+# Runtime dependencies for the crystal-ball DFHack intel agent.
+# Pinned to the versions verified against DFHack 53.14-r2 / DF 53.14.
+#
+# Install into the bundled venv:
+#   .venv\Scripts\python.exe -m pip install -r requirements.txt
+#
+# protobuf  -- decodes the DFHack RPC wire format (dfhack_rpc/CoreProtocol_pb2.py)
+# mcp       -- the Model Context Protocol server (mcp_server.py); pulls in
+#              starlette/uvicorn/httpx/pydantic/anyio transitively.
+# The CLI (cli.py) needs only protobuf; the MCP server needs both.
+protobuf==6.33.6
+mcp==1.28.0

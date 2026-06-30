@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>crystal-ball MCP — Key Findings &amp; Roadmap</title>
+<style>
+  :root{
+    --bg:#1b1712; --panel:#241f18; --panel2:#2c261d; --ink:#e9e1d2;
+    --muted:#b3a78f; --line:#3d3528; --accent:#d9a441; --accent2:#7fae6b;
+    --warn:#e0894a; --bad:#d86b5c; --code:#15120d;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 "Segoe UI",system-ui,Arial,sans-serif}
+  .wrap{max-width:960px;margin:0 auto;padding:40px 24px 80px}
+  header{border-bottom:2px solid var(--line);padding-bottom:20px;margin-bottom:8px}
+  h1{font-size:30px;margin:0 0 6px;color:var(--accent)}
+  h2{font-size:22px;margin:38px 0 12px;color:var(--accent);
+    border-left:4px solid var(--accent);padding-left:12px}
+  h3{font-size:17px;margin:22px 0 8px;color:var(--accent2)}
+  .sub{color:var(--muted);font-size:15px}
+  p{margin:10px 0}
+  code{background:var(--code);color:#e7c98a;padding:1px 6px;border-radius:4px;
+    font-family:"Cascadia Code",Consolas,monospace;font-size:13.5px}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:8px;
+    padding:14px 16px;overflow:auto;font-size:13px;line-height:1.5}
+  pre code{background:none;padding:0;color:#cdd6c2}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:18px 20px;margin:14px 0}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14.5px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);
+    vertical-align:top}
+  th{color:var(--accent);font-weight:600;background:var(--panel2)}
+  tr:hover td{background:#221d16}
+  ul{margin:8px 0 8px 0;padding-left:22px}
+  li{margin:5px 0}
+  .tag{display:inline-block;font-size:11.5px;font-weight:600;letter-spacing:.3px;
+    padding:2px 9px;border-radius:20px;text-transform:uppercase}
+  .t-read{background:#23351f;color:#9fce86;border:1px solid #3a5230}
+  .t-write{background:#3a2a1c;color:#e6a766;border:1px solid #5a4026}
+  .t-new{background:#352338;color:#d79fe0;border:1px solid #553a59}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:680px){.grid{grid-template-columns:1fr}}
+  .kv{display:flex;gap:10px;margin:6px 0}
+  .kv b{color:var(--accent2);min-width:120px;display:inline-block}
+  .find{border-left:4px solid var(--warn);padding:4px 0 4px 14px;margin:14px 0}
+  .find h3{margin-top:0;color:var(--warn)}
+  .lesson{color:var(--muted);font-style:italic}
+  .pill{font-size:12px;color:var(--muted)}
+  .big{font-size:34px;color:var(--accent);font-weight:700;line-height:1}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+    padding:14px 16px;text-align:center}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}
+  @media(max-width:680px){.stats{grid-template-columns:repeat(2,1fr)}}
+  footer{margin-top:50px;border-top:1px solid var(--line);padding-top:16px;
+    color:var(--muted);font-size:13px}
+  a{color:var(--accent)}
+  .prio{font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:4px}
+  .p-high{background:#3a221e;color:#e6897a}
+  .p-med{background:#3a3320;color:#dcc06a}
+  .p-low{background:#23351f;color:#9fce86}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>🔮 crystal-ball MCP</h1>
+  <div class="sub">Key findings, current capabilities &amp; future improvements ·
+    a read-only DFHack-RPC intelligence server for troubleshooting any fortress industry</div>
+</header>
+
+<div class="stats">
+  <div class="stat"><div class="big">72</div><div class="pill">MCP tools</div></div>
+  <div class="stat"><div class="big">11</div><div class="pill">industries covered</div></div>
+  <div class="stat"><div class="big">3</div><div class="pill">legends tools (new)</div></div>
+  <div class="stat"><div class="big">1</div><div class="pill">outbound socket (loopback)</div></div>
+</div>
+
+<h2>1 · What it is</h2>
+<div class="panel">
+  <p>The <b>crystal-ball</b> MCP server reads a <b>live fort over the DFHack
+  RPC socket</b> (<code>127.0.0.1:5000</code>) and answers operational questions about any
+  production pipeline — not just beer, which was the original focus. It is overwhelmingly
+  <b>read-only</b>: it diagnoses why an industry is stalled, audits stock and storage, profiles
+  dwarves, and (new) looks up artifacts, deities and worship.</p>
+  <div class="kv"><b>Transport</b><span>stdio — the MCP client launches it as a subprocess; it binds <b>no network port</b>.</span></div>
+  <div class="kv"><b>Only egress</b><span>the loopback DFHack RPC socket. The client refuses any non-loopback host.</span></div>
+  <div class="kv"><b>Requires</b><span>DF + DFHack running with a fort loaded; Python 3.13 venv at <code>agent/.venv</code>.</span></div>
+</div>
+
+<h2>2 · How a tool works (the repeating pattern)</h2>
+<p>Every feature is the same four-layer slice. Adding a capability means following it end to end —
+no framework magic.</p>
+<pre><code>MCP tool (mcp_server.py)        @mcp.tool() foo_report / foo_data
+        │
+Python fetch + format (foo.py)  fetch_foo() -> dict   format_foo(dict) -> str
+        │
+run_intel() (intel.py)          prepend _prelude.lua, send over RPC, parse JSON
+        │
+Lua query (scripts/foo.lua)     read df.global.world.*, section() per block, finish()</code></pre>
+<div class="panel">
+  <ul>
+    <li><b>Read path:</b> <code>run_intel("foo.lua", [args])</code> runs <code>RunCommand("lua", [prelude+script, …args])</code>; the script <code>print()</code>s one JSON blob that Python parses.</li>
+    <li><b>Twin tools:</b> each capability ships a <code>_report</code> (human text) and a <code>_data</code> (raw JSON) variant from the same fetch.</li>
+    <li><b>Graceful degradation:</b> <code>section(name, fn)</code> wraps each block in <code>pcall</code>; a renamed DF field downgrades <i>that</i> section to an <code>errors[]</code> note instead of breaking the whole report.</li>
+    <li><b>Fort gate:</b> every script sets <code>fort_loaded = (world.map.block_index ~= nil)</code> and bails early at the main menu.</li>
+  </ul>
+</div>
+
+<h2>3 · Capabilities today</h2>
+
+<h3>Per-industry: status + root-cause diagnosis <span class="tag t-read">read</span></h3>
+<p>Each industry exposes <code>*_report</code>, <code>*_data</code>, <code>diagnose_*</code> and
+<code>diagnose_*_data</code>. The diagnosers walk the pipeline and return ranked blockers.</p>
+<table>
+  <tr><th>Industry</th><th>What the diagnoser checks</th></tr>
+  <tr><td>brewing</td><td>order → still built/free → brewable plants → empty container → able brewer</td></tr>
+  <tr><td>cooking</td><td>order → kitchen → ingredients → ≥2 distinct types → able cook</td></tr>
+  <tr><td>farming</td><td>plot → seasonal crop set → seeds on hand → able farmer</td></tr>
+  <tr><td>fishing</td><td>catch raw → fishery → clean → catcher &amp; cleaner labor</td></tr>
+  <tr><td>butchery</td><td>slaughter mark/corpse → butcher shop → able butcher (+ tanning)</td></tr>
+  <tr><td>textiles</td><td>thread→cloth (loom) and cloth→clothes (clothier); tattered = demand</td></tr>
+  <tr><td>metal</td><td>smelter → ore → fuel (unless magma) → able smelter (+ forging)</td></tr>
+  <tr><td>fuel</td><td>wood furnace → logs → wood-burner; magma makes fuel optional</td></tr>
+  <tr><td>construction</td><td>masonry / carpentry / glass / mechanisms in one view</td></tr>
+  <tr><td>medical</td><td>hospital zone → diagnostician + treatment labors → supplies</td></tr>
+  <tr><td>justice</td><td>sheriff / captain appointed → crime caseload</td></tr>
+</table>
+
+<h3>Fort-wide &amp; dwarves <span class="tag t-read">read</span></h3>
+<table>
+  <tr><th>Tool</th><th>Answers</th></tr>
+  <tr><td><code>stock_*</code></td><td>items on hand by type + material (pipeclean any pipeline)</td></tr>
+  <tr><td><code>container_*</code></td><td>barrels / pots / bins / boxes empty vs full</td></tr>
+  <tr><td><code>shops_and_orders_*</code></td><td>workshops idle/busy + manager order queue with status</td></tr>
+  <tr><td><code>zones_*</code></td><td>locations (taverns/temples/hospital/library) + civzone counts</td></tr>
+  <tr><td><code>announcements_*</code></td><td>recent events/alerts — the only window into the game log</td></tr>
+  <tr><td><code>dwarf_roster_*</code></td><td>all citizens: job, stress band, unmet needs, wounds, mood</td></tr>
+  <tr><td><code>dwarf_detail_*</code></td><td>one dwarf: labors, skills, needs, thoughts, health</td></tr>
+  <tr><td><code>labor_coverage_*</code></td><td>who can do a labor (idle/busy) + work details</td></tr>
+</table>
+
+<h3>Legends &amp; lore <span class="tag t-new">new this session</span></h3>
+<table>
+  <tr><th>Tool</th><th>Answers</th></tr>
+  <tr><td><code>artifact_locate_*</code></td><td>locate a fort-present artifact + its current spot (held / stored / built / x,y,z), maker, material, quality</td></tr>
+  <tr><td><code>deity_detail_*</code></td><td>a deity's spheres/domains + which fort temple is dedicated to it</td></tr>
+  <tr><td><code>citizen_faith_*</code></td><td>a dwarf's worshipped deities (with strength) + the temple to honor each</td></tr>
+</table>
+<p class="lesson">Worked example: <i>Zodost Mogshum</i> → Masterful willow cabinet, lying loose at (92,92,132),
+made by Athel, who worships <i>Domas Walkguild the Gilded Merchants</i> (Wealth/Trade/Travelers) — a deity with
+no temple in the fort. "The Noiseless Arrow" it was offered to is the <b>civilization</b>, not a deity.</p>
+
+<h3>Write / "act" tools <span class="tag t-write">write — gated</span></h3>
+<p>The only state-changing tools. Default mode is read-only (<code>advise</code> / <code>preview</code>);
+they write <b>only</b> with <code>mode='apply'</code> AND <code>confirm=True</code>, and every write goes
+through an audited mutation script that validates each enum before mutating.</p>
+<ul>
+  <li><code>queue_work_order</code> · <code>auto_stock_target</code> · <code>fix_idle</code> ·
+      <code>manage_containers</code> · <code>boost_mood</code> · <code>manage_hospital_supplies</code></li>
+</ul>
+
+<h2>4 · Safety model — why it's trustworthy</h2>
+<div class="panel">
+  <ul>
+    <li><b>Loopback only.</b> The client rejects any host other than <code>127.0.0.1</code>/<code>localhost</code>/<code>::1</code>.</li>
+    <li><b>No caller Lua.</b> Only the bundled, audited <code>scripts/*.lua</code> files ever run; selector/labor args are forwarded as <b>data</b>, never executed.</li>
+    <li><b>No open port.</b> stdio transport; nothing listens.</li>
+    <li><b>Writes are explicit &amp; reversible.</b> Gated behind <code>apply+confirm</code>, validated, and described as undoable in-game.</li>
+    <li><b>Fails soft.</b> Per-section <code>pcall</code> + a top-level connection guard turn DFHack hiccups into messages, not crashes.</li>
+  </ul>
+</div>
+
+<h2>5 · Key technical findings</h2>
+<p>Lessons that cost real debugging time and should shape every future query.</p>
+
+<div class="find">
+  <h3>⚠ The RPC is single-threaded — a slow query poisons the server</h3>
+  <p>A client-side timeout does <b>not</b> cancel the work: DFHack keeps running the Lua loop, blocking
+  new connections (even the handshake) until it drains. The default socket timeout is <b>5s</b>.</p>
+  <p class="lesson">Lesson: bound the work <i>inside</i> Lua. Filter cheaply before any expensive call, and never
+  iterate a worldgen-scale collection doing per-item RPC-heavy work.</p>
+</div>
+
+<div class="find">
+  <h3>⚠ Artifact scale: 22,311 records, all with resident items</h3>
+  <p>This world's <code>world.artifacts.all</code> holds tens of thousands of (historical) artifacts,
+  and DF keeps every artifact's <code>.item</code> in memory — so neither <code>a.item ~= nil</code> nor
+  <code>world.items.all</code> membership tells you which are <b>in your fort</b>. Translating all 22k names
+  blew the timeout.</p>
+  <p class="lesson">Fix: filter on the item's placement flags (<code>on_ground / in_building / in_inventory</code>)
+  <i>before</i> translating — cut 22,311 → 25 instantly. Name-translation is the expensive operation.</p>
+</div>
+
+<div class="find">
+  <h3>⚠ Two name forms — dwarvish vs English</h3>
+  <p><code>translateName(name)</code> gives the romanized dwarvish the player sees ("Zodost Mogshum");
+  <code>translateName(name, true)</code> gives the English meaning ("The Rot of Elbows"). Searching the wrong
+  form silently finds nothing.</p>
+  <p class="lesson">Lesson: match against <b>both</b> forms; display dwarvish primary, English in parentheses.</p>
+</div>
+
+<div class="find">
+  <h3>⚠ DFHack struct paths rarely match the obvious guess</h3>
+  <p>Confirmed live (this build) for the legends work:</p>
+  <table>
+    <tr><th>Data</th><th>Actual path</th></tr>
+    <tr><td>Deity spheres</td><td><code>hf.info.metaphysical.spheres</code> (not <code>hf.spheres</code>)</td></tr>
+    <tr><td>Temple dedication</td><td><code>ab.deity_type</code> (−1/0/1) + <code>ab.deity_data.Deity</code> — on the templest, not <code>.contents</code>; <code>df.temple_deity_type</code> isn't a global</td></tr>
+    <tr><td>Unit → deity worship</td><td><code>unit.hist_figure_id</code> → walk <code>hf.histfig_links</code>; deity links via <code>link:getType()==DEITY</code> (no <code>link_type</code> field), then <code>link.target_hf</code> / <code>link.link_strength</code></td></tr>
+    <tr><td>Item availability</td><td><code>in_inventory</code> is set for container-stored items too; resolve with <code>getHolderUnit</code></td></tr>
+    <tr><td>Hospital</td><td>a <i>location</i> (<code>abstract_building_hospitalst</code>), not a civzone; limits in <code>contents.desired_*</code></td></tr>
+    <tr><td>Hospital supply units</td><td><code>count_*</code>/<code>desired_*</code> are raw <i>dimension</i> units, not items — the in-game screen divides by per-item dimension (thread 15000, cloth 10000, powder/soap 150; splints/crutches/buckets 1:1). Convert or your "150000" means 10.</td></tr>
+  </table>
+  <p class="lesson">Lesson: probe field paths against a live fort before trusting them; wrap each in <code>pcall</code> so a
+  version drift degrades to a note.</p>
+</div>
+
+<h2>6 · Future improvements</h2>
+
+<h3>Robustness &amp; performance</h3>
+<table>
+  <tr><th>Priority</th><th>Improvement</th></tr>
+  <tr><td><span class="prio p-high">HIGH</span></td><td><b>Per-query timeouts.</b> Let heavy queries request a longer socket timeout instead of relying on the 5s default — and prefer server-side bounding so a slow loop can't poison the RPC.</td></tr>
+  <tr><td><span class="prio p-high">HIGH</span></td><td><b>Translation cache &amp; cheap-filter-first convention.</b> Codify "filter on flags/ids before calling <code>translateName</code>" as a prelude helper, and memoize name lookups within a query.</td></tr>
+  <tr><td><span class="prio p-med">MED</span></td><td><b>Shared selector/candidate helper.</b> The "id-or-name → unique, else candidate list" logic is duplicated across <code>dwarf_detail</code>, <code>artifact_locator</code>, <code>deity_detail</code>, <code>citizen_faith</code>. Lift it into <code>_prelude.lua</code>.</td></tr>
+  <tr><td><span class="prio p-med">MED</span></td><td><b>Test fixtures.</b> Capture sample JSON blobs so the Python <code>format_*</code> layer can be unit-tested without a live fort.</td></tr>
+</table>
+
+<h3>Feature expansion</h3>
+<table>
+  <tr><th>Priority</th><th>Improvement</th></tr>
+  <tr><td><span class="prio p-high">HIGH</span></td><td><b>"Where should I build a temple?"</b> Aggregate worship across all citizens, cross-reference dedicated temples, and surface the <i>most-worshipped deity with no temple</i> — closes the loop the legends tools opened (e.g. Domas).</td></tr>
+  <tr><td><span class="prio p-med">MED</span></td><td><b>Strange-mood / artifact watch.</b> A tool that surfaces an in-progress mood (claimed workshop, materials demanded, risk of going insane) in real time, instead of scraping <code>announcements</code> after the fact.</td></tr>
+  <tr><td><span class="prio p-med">MED</span></td><td><b>Written-content lookup.</b> Most fort-present "artifacts" are books/codices — expose their titles, authors, and topics as a small library view.</td></tr>
+  <tr><td><span class="prio p-med">MED</span></td><td><b>Fort overview tool.</b> One call that rolls up population, mood, food/drink days remaining, and any active blockers across industries.</td></tr>
+  <tr><td><span class="prio p-low">LOW</span></td><td><b>Artifact provenance.</b> Creation event, prior owners, and any history entries for a named artifact.</td></tr>
+</table>
+
+<h3>Coverage &amp; consistency</h3>
+<table>
+  <tr><th>Priority</th><th>Improvement</th></tr>
+  <tr><td><span class="prio p-med">MED</span></td><td><b>Finish the CLI surface.</b> The per-industry <code>diagnose_*</code> tools are exposed via MCP but only <code>diagnose</code> (brewing) is wired in <code>cli.py</code>. Wire the rest for terminal parity.</td></tr>
+  <tr><td><span class="prio p-low">DONE</span></td><td><b>crystal-ball rebrand.</b> Renamed the server from the original "brewery"/"steward" naming to <code>crystal-ball</code> across the registration, code, docs, status line, and session greeting now that scope is fort-wide.</td></tr>
+  <tr><td><span class="prio p-low">LOW</span></td><td><b>Advertise legends tools</b> in the SessionStart greeting and README tool tables.</td></tr>
+</table>
+
+<h2>7 · Takeaways at a glance</h2>
+<div class="grid">
+  <div class="panel">
+    <h3>What works well</h3>
+    <ul>
+      <li>One consistent four-layer pattern — trivial to extend.</li>
+      <li>Strong, layered safety: loopback, no caller Lua, gated writes.</li>
+      <li>Diagnosers give <i>ranked root causes</i>, not just raw data.</li>
+      <li><code>_report</code>/<code>_data</code> twins serve both chat and tooling.</li>
+      <li>Per-section <code>pcall</code> survives DF version drift.</li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h3>What to watch</h3>
+    <ul>
+      <li>Single-threaded RPC + 5s timeout = slow queries are dangerous.</li>
+      <li>Worldgen-scale collections need cheap pre-filters.</li>
+      <li>DFHack field paths drift and surprise — probe, don't assume.</li>
+      <li>CLI lags MCP in coverage.</li>
+      <li>Naming still reflects the beer-only origin.</li>
+    </ul>
+  </div>
+</div>
+
+<footer>
+  Generated for the <code>df_hack/agent</code> crystal-ball MCP · read-only DFHack-RPC intel ·
+  findings verified against a live fort. Companion notes live in the project's auto-memory
+  (<code>df-legends-struct-fields</code>, <code>df-item-availability-flag</code>,
+  <code>df-hospital-is-a-location</code>).
+</footer>
+
+</div>
+</body>
+</html>

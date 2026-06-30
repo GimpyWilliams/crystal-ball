@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# World-specific data caches (contain fort save IDs and trade history)
+agent/data/raws_*.json
+agent/data/trade_history.json
+
+# Debug artifacts
+*.stackdump
+
+# Claude Code project settings (contain local paths)
+.claude/
+
+# Reference / vendored example — influence only, not used in this project
+reference/
+
+# Internal / fort-specific files (not for distribution)
+notes.txt
+fort-status-*.html
+prospect_report.html
+barracks-guide.html
+industry-breakdown.html
+remaining-work.html
+hospital.png
+petition1.png
+screenshot.png

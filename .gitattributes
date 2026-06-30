@@ -1,0 +1,18 @@
+# Normalize line endings to LF in the repo; check out as-is on all platforms
+* text=auto eol=lf
+
+# Lua and Python always LF
+*.lua text eol=lf
+*.py  text eol=lf
+
+# Prose / docs
+*.md   text eol=lf
+*.html text eol=lf
+*.txt  text eol=lf
+
+# Proto
+*.proto text eol=lf
+
+# Binary
+*.png binary
+*.jpg binary
