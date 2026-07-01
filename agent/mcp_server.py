@@ -568,7 +568,7 @@ def diagnose_justice_data() -> dict:
 
 
 @mcp.tool()
-def stock_report(item_type: str = "") -> str:
+def stock_report(item_type: str = "", refresh: bool = False) -> str:
     """Generic stock inventory across the whole fort, for troubleshooting any
     industrial pipeline (not just beer). Lists every item type (DRINK, PLANT,
     BAR, WOOD, CLOTH, ...) leading with on-hand stock (available + in transit +
@@ -576,23 +576,31 @@ def stock_report(item_type: str = "") -> str:
     stock (uncollected webs / trade goods / unreachable) shown separately.
     When asked 'how much X do I have', answer with on_hand (or available), NEVER
     the gross total -- the total folds in items the fort does not own yet.
-    Pass `item_type` (free text: 'DRINK', 'TOOL', or a subtype like 'nest box')
-    to scan ONLY that type -- far faster than the whole-fort scan and, for a type
-    with subtypes, itemized by subtype. Omit for the full inventory. Read-only."""
-    return _safe(format_stock, lambda: fetch_stock(item_type or None))
+
+    Omit `item_type` for the whole-fort inventory: served from an on-disk baseline
+    that refreshes perishables (drink/food/plants) within ~1 game-week and
+    books/tools within ~1 season, so it's near-instant and labeled 'as of <date>'.
+    Pass `item_type` (free text: 'DRINK', 'TOOL', or a subtype like 'nest box') for
+    a LIVE single-type count (and, for a type with subtypes, an itemized breakdown)
+    -- use this when freshness matters. Pass `refresh=True` to force a full live
+    rebuild of the baseline. Read-only."""
+    return _safe(format_stock,
+                 lambda: fetch_stock(item_type or None, rebuild=refresh))
 
 
 @mcp.tool()
-def stock_data(item_type: str = "") -> dict:
+def stock_data(item_type: str = "", refresh: bool = False) -> dict:
     """Same generic stock inventory as structured JSON. Each category carries
     free_units (= available now), in_transit, owned_unavailable, inert, on_hand,
     not_yet_acquired, total_units (gross = on_hand + not_yet_acquired), plus
     by_material / by_material_on_hand / by_material_unowned (and by_subtype when
     focused). on_hand is what the fort owns; not_yet_acquired (webs / trade /
     unreachable) is potential, not stock -- never report total_units as 'what I
-    have'. Pass `item_type` (free text) to scan one type only -- recommended, as
-    the unfocused JSON can be very large. Read-only."""
-    return fetch_stock(item_type or None)
+    have'. Omit `item_type` for the whole-fort baseline (cached, carries `cached`
+    + cur_year/cur_year_tick as_of; refresh=True forces a full rebuild). Pass
+    `item_type` (free text) for a LIVE single type -- recommended, as the unfocused
+    JSON can be very large. Read-only."""
+    return fetch_stock(item_type or None, rebuild=refresh)
 
 
 @mcp.tool()

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>crystal-ball — Known Problems</title>
+<style>
+  body { font: 16px/1.55 system-ui, sans-serif; max-width: 820px; margin: 2rem auto; padding: 0 1rem; color: #1b1b1b; }
+  h1 { border-bottom: 2px solid #444; padding-bottom: .3rem; }
+  .problem { border: 1px solid #ddd; border-left: 4px solid #c0392b; border-radius: 4px; padding: 1rem 1.25rem; margin: 1.25rem 0; background: #fafafa; }
+  .problem.fixed { border-left-color: #27ae60; }
+  .meta { font-size: .85rem; color: #666; margin: 0 0 .5rem; }
+  .badge { display: inline-block; font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: .15rem .5rem; border-radius: 3px; color: #fff; background: #c0392b; }
+  .badge.fixed { background: #27ae60; }
+  code { background: #eee; padding: .1rem .35rem; border-radius: 3px; font-size: .9em; }
+  dl { margin: .5rem 0 0; }
+  dt { font-weight: 600; margin-top: .6rem; }
+  dd { margin: .15rem 0 0; }
+</style>
+</head>
+<body>
+<h1>crystal-ball — Known Problems</h1>
+<p class="meta">Last updated 2026-06-30. Tracks reproducible issues in the
+<code>crystal-ball</code> MCP server not yet fixed.</p>
+
+<div class="problem">
+  <p class="meta"><span class="badge">Open</span> &nbsp;Logged 2026-06-30</p>
+  <h2><code>deity_detail</code> with an empty selector times out</h2>
+  <dl>
+    <dt>Symptom</dt>
+    <dd>Calling <code>deity_detail('')</code> (empty selector) raises
+    <code>TimeoutError: timed out</code> from the DFHack socket. Reproducible, not
+    transient — confirmed by an isolated retry. Surfaces in
+    <code>mcp_server.py --selftest</code> as a traceback in the
+    <code>deity_detail('')</code> section.</dd>
+
+    <dt>Location</dt>
+    <dd><code>legends.py:90</code> — <code>fetch_deity()</code>.</dd>
+
+    <dt>Likely cause</dt>
+    <dd>Same class as the (now-fixed) stock timeout: a heavy scan exceeding the
+    5&nbsp;s socket timeout (<code>dfhack_rpc/client.py:53</code>). An empty selector
+    appears to fall through to scanning all deities / historical figures rather than
+    a single resolved one.</dd>
+
+    <dt>Scope</dt>
+    <dd>Unrelated to the stock-inventory work — <code>legends.py</code> was not touched
+    by that change. A non-empty/valid deity selector is the normal call path and is
+    not known to be affected.</dd>
+
+    <dt>Possible fix (not yet applied)</dt>
+    <dd>Either reject/short-circuit an empty selector before the live query, or apply
+    the same index-range pagination used for the full stock scan
+    (<code>scripts/stock_query.lua</code> + <code>pipelines.py _fetch_stock_full</code>)
+    to the legends/historical-figure scan.</dd>
+  </dl>
+</div>
+
+</body>
+</html>

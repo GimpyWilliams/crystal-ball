@@ -10,6 +10,7 @@ env/
 
 # World-specific data caches (contain fort save IDs and trade history)
 agent/data/raws_*.json
+agent/data/stock_*.json
 agent/data/trade_history.json
 
 # Debug artifacts

@@ -231,7 +231,12 @@ def main(argv: list[str]) -> int:
 
     fetch, fmt = _REPORTS[name]
     try:
-        data = fetch(*extra)
+        if name == "stock":
+            # --rebuild forces a full live re-scan of the broad baseline.
+            data = fetch_stock(" ".join(extra) if extra else None,
+                               rebuild=("--rebuild" in argv))
+        else:
+            data = fetch(*extra)
     except DFHackError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

@@ -125,10 +125,40 @@ if focus ~= '' then
         end)
     end
 else
-    for _, it in ipairs(world.items.all) do
-        pcall(function() account(it, false) end)
+    -- Full-fort scan, paginated by index range so each RPC chunk finishes well
+    -- under the socket timeout (the unpaginated 29k-item classify pass exceeds
+    -- it). start (arg 2) and limit (arg 3) are read only here; the focus branch
+    -- never consumed them, so a no-arg call still means "scan everything".
+    -- Parenthesize: select() returns ALL trailing args, and a bare
+    -- tonumber(select(3,...)) would pass arg4 as tonumber's base. ( ) truncates
+    -- to one value.
+    local start = tonumber((select(2, ...))) or 0
+    local limit = tonumber((select(3, ...)))  -- nil -> whole scan (legacy)
+    local all = world.items.all
+    local n = #all
+    local stop = limit and math.min(start + limit, n) or n
+    for i = start, stop - 1 do
+        pcall(function() account(all[i], false) end)
+    end
+    -- next_cursor == nil signals the last page; the caller pages until it clears.
+    report.next_cursor = (stop < n) and stop or nil
+    report.scanned_total = n
+    -- Per-type loose-vector length, for stockcache's classification: a type whose
+    -- vector_len == item_count is "vector" (cheap, complete -> partial-refreshable);
+    -- a short vector_len is "heavy" (container-backed, e.g. BOOK 17 vs 12355). The
+    -- value is the FULL vector (page-independent), so reporting it on each page is
+    -- safe -- the Python merge takes the first occurrence, not a sum.
+    for tname, c in pairs(cats) do
+        pcall(function() c.vector_len = #world.items.other[tname] end)
     end
 end
+
+-- Stamp the in-game clock + world id on every scan (both branches) so each result
+-- self-dates and self-identifies for the stock baseline's bookkeeping (a focused
+-- scan can then patch the right per-world cache with no extra probe RPC).
+pcall(function() report.cur_year = df.global.cur_year end)
+pcall(function() report.cur_year_tick = df.global.cur_year_tick end)
+pcall(function() report.world_id = world.cur_savegame.world_header.id1 end)
 
 report.total_items = total_items
 report.categories = cats

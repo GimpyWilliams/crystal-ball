@@ -259,7 +259,9 @@ def auto_stock_target(item, target, job=None, material="any", frequency="daily",
         known = _STOCK_TARGET_JOBS.get(item)
         if known:
             job, reaction = known
-    stock = fetch_stock(host=host, port=port)
+    # Targeted read of just this one type -- instant, vs a ~10s full-fort scan to
+    # read one number (and it warms the stock baseline as a side effect).
+    stock = fetch_stock(item, host=host, port=port)
     if not stock.get("fort_loaded"):
         return _render(_plan(False, "", reason="no fortress is loaded"),
                        mode, confirm, host, port)
@@ -294,15 +296,16 @@ def fix_idle(mode="advise", confirm=False, host="127.0.0.1", port=5000):
     with shared_connection(host, port):
         roster = fetch_roster(host=host, port=port)
         shops = fetch_shops_and_orders(host=host, port=port)
-        stock = fetch_stock(host=host, port=port)
+        # Targeted reads of only the two types we need (both vector-complete, so the
+        # focused count is exact) instead of a full-fort scan for two numbers.
+        boulders = _free(fetch_stock("BOULDER", host=host, port=port), "BOULDER")
+        thread = _free(fetch_stock("THREAD", host=host, port=port), "THREAD")
     if not roster.get("fort_loaded"):
         return _render(_plan(False, "", reason="no fortress is loaded"),
                        mode, confirm, host, port)
 
     idle_dwarves = sum(1 for d in (roster.get("dwarves") or [])
                        if d.get("activity") == "Idle")
-    boulders = _free(stock, "BOULDER")
-    thread = _free(stock, "THREAD")
     facts = [f"idle dwarves: {idle_dwarves}",
              f"boulders free: {boulders}, thread free: {thread}"]
 
@@ -397,7 +400,8 @@ def boost_mood(mode="advise", confirm=False, host="127.0.0.1", port=5000):
     tavern/temple/library zones is advice-only."""
     with shared_connection(host, port):
         roster = fetch_roster(host=host, port=port)
-        stock = fetch_stock(host=host, port=port)
+        # Targeted read of just DRINK (vector-complete -> exact) instead of a full scan.
+        drinks = _free(fetch_stock("DRINK", host=host, port=port), "DRINK")
     if not roster.get("fort_loaded"):
         return _render(_plan(False, "", reason="no fortress is loaded"),
                        mode, confirm, host, port)
@@ -405,7 +409,6 @@ def boost_mood(mode="advise", confirm=False, host="127.0.0.1", port=5000):
     dwarves = roster.get("dwarves") or []
     total_unmet = sum(d.get("unmet_needs", 0) for d in dwarves)
     worst = sorted(dwarves, key=lambda d: -(d.get("unmet_needs") or 0))[:3]
-    drinks = _free(stock, "DRINK")
     n_dwarves = len(dwarves) or 1
     facts = [f"total unmet needs across fort: {total_unmet}",
              f"drinks on hand: {drinks} (~{drinks // n_dwarves} per dwarf)"]

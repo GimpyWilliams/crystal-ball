@@ -32,7 +32,8 @@ scripts/                   # READ queries: vetted read-only Lua, the only reads 
   _prelude.lua             #   shared read helpers prepended to every query (see below)
   <industry>_intel.lua     #   one status query per industry
   diagnose_<industry>.lua  #   one root-cause query per industry
-  stock_query.lua          #   generic stock inventory (available vs total, by state)
+  stock_query.lua          #   generic stock inventory (available vs total, by state; paginated full scan)
+  stock_probe.lua          #   cheap freshness probe for the stock baseline cache
   acquirable_items.lua     #   inverse of stock: recoverable items, bucketed by why
   container_audit.lua      #   barrel/pot/bin/box storage audit
   shops_and_orders.lua     #   workshops + manager order queue (material-aware)
@@ -52,6 +53,7 @@ reports.py      # shared plain-text formatters (diagnosis renderer, error notes)
 brewery.py / food.py / textiles.py / metalworks.py / construction.py /
   medical.py / justice.py   # per-industry fetch + format
 pipelines.py    # stock / container / shops / acquirable fetch + format
+stockcache.py   # on-disk per-world stock baseline: broad reads served cheap, refreshed per-type
 diagnostics.py  # brewing diagnosis fetch + format
 dwarves.py      # roster / dwarf detail / labor coverage fetch + format
 mood.py / zones.py / hotkeys.py / trade.py / agreements.py / announcements.py /
@@ -105,7 +107,7 @@ Fort-wide and dwarf tools (also `_report` + `_data`, and CLI where noted):
 | Tool | CLI | What it answers |
 |------|-----|-----------------|
 | `fort_briefing` | `cli.py briefing` | batched "morning briefing": citizen/stress summary, strange moods (insanity-risk flags), hospital, workshop idle/busy + active orders, key survival stocks, and a cross-industry roll-up of flagged blockers — all over ONE shared connection |
-| `stock_*` | `cli.py stock` | items on hand by type + material; **available** (reachable & usable) vs total, with the remainder split into in-transit / acquirable / inert |
+| `stock_*` | `cli.py stock` | items on hand by type + material; **available** (reachable & usable) vs total, with the remainder split into in-transit / acquirable / inert. Broad (no `item_type`) is served from an on-disk baseline cache (`stockcache.py`), refreshed per-type; pass `item_type` for a live single type, or `refresh=True` / `--rebuild` to force a full re-scan |
 | `acquirable_items` | `cli.py acquire [TYPE]` | the inverse of stock: items NOT freely available but recoverable — uncollected webs, carried/stranded cargo, loose or cavern-stuck stock, claimed/forbidden/dumped/at-depot — each with a "how to get it" hint |
 | `container_*` | `cli.py containers` | barrels/pots/bins/boxes empty vs full |
 | `shops_and_orders_*` | `cli.py shops` | workshops idle/busy + manager order queue (with material/condition labels) |
@@ -184,7 +186,9 @@ Plain CLI (no MCP client needed):
 ```
 .venv\Scripts\python.exe cli.py briefing      # batched morning roll-up
 .venv\Scripts\python.exe cli.py              # brewing report (default)
-.venv\Scripts\python.exe cli.py stock         # generic stock inventory
+.venv\Scripts\python.exe cli.py stock         # broad inventory (cached baseline)
+.venv\Scripts\python.exe cli.py stock --rebuild  # force a full live re-scan
+.venv\Scripts\python.exe cli.py stock DRINK   # one type, live (warms the baseline)
 .venv\Scripts\python.exe cli.py containers    # storage audit
 .venv\Scripts\python.exe cli.py shops         # workshops + order queue
 .venv\Scripts\python.exe cli.py diagnose      # why isn't beer being made?

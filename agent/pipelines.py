@@ -11,13 +11,50 @@ from resolve import UnknownType, resolve_building, resolve_item, tier_mode
 
 # --- generic stock ---------------------------------------------------------
 
+# Items per paginated full-scan chunk. At the measured ~0.34ms/item classify
+# cost this is ~2s/chunk -- a comfortable margin under the 5s socket timeout,
+# scaling to any fort size without ever tripping it (the unpaginated whole-fort
+# scan ran ~10s and timed out).
+_STOCK_CHUNK = 6000
+
+# Per-type scalar counters that sum across pages, and the nested name->count maps
+# that merge by summing values. Kept in lockstep with stock_query.lua's `account`.
+_CAT_SCALARS = ("total_units", "item_count", "on_hand", "available",
+                "free_units", "in_transit", "owned_unavailable", "inert",
+                "not_yet_acquired", "acquirable")
+_CAT_MAPS = ("by_material", "by_material_on_hand", "by_material_unowned",
+             "by_reason_owned", "by_reason_unowned", "by_subtype")
+
+
+def _merge_stock_categories(acc: dict, page_cats: dict) -> None:
+    """Fold one page's per-type categories into the running accumulator: sum the
+    scalar counters and merge the name->count maps. by_subtype values are
+    {on_hand, available} sub-dicts (focus mode only; empty in a full scan)."""
+    for tname, c in as_map(page_cats).items():
+        a = acc.setdefault(tname, {})
+        for k in _CAT_SCALARS:
+            a[k] = a.get(k, 0) + c.get(k, 0)
+        for mapname in _CAT_MAPS:
+            dst = a.setdefault(mapname, {})
+            for key, val in as_map(c.get(mapname)).items():
+                if isinstance(val, dict):
+                    sub = dst.setdefault(key, {})
+                    for sk, sv in val.items():
+                        sub[sk] = sub.get(sk, 0) + sv
+                else:
+                    dst[key] = dst.get(key, 0) + val
+
+
 def fetch_stock(item_type: str | None = None, host: str = "127.0.0.1",
-                port: int = 5000) -> dict:
-    # No focus -> full-fort scan (original behaviour). With a focus, resolve the
-    # free-text name and scan only that one type's vector -- the fast path that
-    # avoids the world.items.all scan behind the stock_data timeout/token blowout.
+                port: int = 5000, rebuild: bool = False) -> dict:
+    # No focus -> broad "every good" inventory, served from the on-disk baseline
+    # (stockcache) and refreshed per-type only when stale; rebuild=True forces a
+    # full re-scan. With a focus, resolve the free-text name and scan only that one
+    # type's vector live -- the fast path -- then warm the baseline with the result.
     if not item_type:
-        return run_intel("stock_query.lua", host=host, port=port)
+        import stockcache  # local import: stockcache lazily imports back into us
+        return (stockcache.full_rebuild(host=host, port=port) if rebuild
+                else stockcache.get_broad(host=host, port=port))
     with shared_connection(host=host, port=port):
         try:
             type_name, subtype = resolve_item(item_type)
@@ -25,10 +62,66 @@ def fetch_stock(item_type: str | None = None, host: str = "127.0.0.1",
             return {"fort_loaded": True, "error": str(e), "query": item_type}
         args = [type_name] + ([str(subtype)] if subtype is not None else [])
         data = run_intel("stock_query.lua", args=args)
+        # Warm the baseline from this live, authoritative single-type count. Only
+        # when unfiltered by subtype (a subtype slice isn't the whole type's count).
+        if subtype is None and data.get("fort_loaded"):
+            try:
+                import stockcache
+                stockcache.patch_type(data.get("world_id"), type_name, data)
+            except Exception:  # noqa: BLE001 -- warming must never break a read
+                pass
     data["query"] = item_type
     data["resolved_type"] = type_name
     data["resolved_subtype"] = subtype
     return data
+
+
+def _fetch_stock_full(host: str = "127.0.0.1", port: int = 5000) -> dict:
+    """Full-fort inventory by paging world.items.all in _STOCK_CHUNK-sized index
+    ranges over one shared connection, merging each page's categories. Each RPC
+    stays under the socket timeout; the merge reconstructs the same totals the
+    old single-shot scan produced, but for every item."""
+    merged: dict = {}
+    out = {"fort_loaded": True, "total_items": 0, "categories": merged,
+           "errors": []}
+    with shared_connection(host=host, port=port):
+        start = 0
+        while True:
+            page = run_intel("stock_query.lua",
+                             args=["", str(start), str(_STOCK_CHUNK)])
+            if not page.get("fort_loaded"):
+                return page  # no fort loaded -> surface the bare report as-is
+            _merge_stock_categories(merged, page.get("categories"))
+            # Per-type vector_len is the FULL loose-vector length (page-independent),
+            # so take the first occurrence rather than letting the merge sum it.
+            for tname, c in as_map(page.get("categories")).items():
+                if "vector_len" in c and "vector_len" not in merged.get(tname, {}):
+                    merged[tname]["vector_len"] = c["vector_len"]
+            out["total_items"] += page.get("total_items", 0)
+            out["errors"].extend(page.get("errors") or [])
+            out["scanned_total"] = page.get("scanned_total")
+            # Clock + world id are identical on every page; keep the latest.
+            out["cur_year"] = page.get("cur_year")
+            out["cur_year_tick"] = page.get("cur_year_tick")
+            out["world_id"] = page.get("world_id")
+            cursor = page.get("next_cursor")
+            if not cursor:
+                break
+            start = cursor
+    return out
+
+
+_SEASONS = ("spring", "summer", "autumn", "winter")
+
+
+def _game_date(year, tick) -> str:
+    """'Year 253, early summer'-style stamp from cur_year / cur_year_tick."""
+    if year is None:
+        return "unknown date"
+    month = (tick or 0) // (1200 * 28)          # 0..11
+    season = _SEASONS[min(month // 3, 3)]
+    phase = ("early", "mid", "late")[month % 3]
+    return f"Year {year}, {phase} {season}"
 
 
 def format_stock(data: dict, top_materials: int = 6) -> str:
@@ -40,6 +133,11 @@ def format_stock(data: dict, top_materials: int = 6) -> str:
     cats = as_map(data.get("categories"))
     lines = [f"=== Stock Inventory ({data.get('total_items', 0)} items, "
              f"{len(cats)} item types) ==="]
+    if data.get("cached"):
+        stamp = _game_date(data.get("cur_year"), data.get("cur_year_tick"))
+        lines.append(f"(cached baseline as of {stamp}; perishables refresh within "
+                     f"~1 week, books/tools within ~1 season -- "
+                     f"query one item_type for a live count)")
     # Order categories by what the fort can use now (available), then by owned
     # stock -- NOT by gross total, so a pile of uncollected webs can't float a
     # category to the top as if it were usable.

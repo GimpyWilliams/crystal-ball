@@ -72,6 +72,9 @@ radius.
    scans `world.items.all`; it **timed out** in a recent briefing, and
    `stock_data` returned 129k chars (over the token cap). `acquirable_items`
    has a `focus` mode; `stock` does not.
+   *(RESOLVED, June 2026.* R3 added the focused fast path; the broad path was then
+   paginated (`_STOCK_CHUNK`) to beat the 5s timeout and fronted by an on-disk
+   per-world baseline cache. See CLAUDE.md "Stock baseline cache (`stockcache.py`)".)
 7. **No single-item / item-by-id detail.** Cannot inspect one item's material,
    quality, wear, stack, container, or reserving job. `artifact_locate` does a
    slice of this for artifacts only.

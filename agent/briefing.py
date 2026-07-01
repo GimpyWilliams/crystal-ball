@@ -43,12 +43,28 @@ _DIAGNOSES = [
 ]
 
 # Survival/operations stocks worth a headline glance, in display order. Only
-# those actually present as item-type categories are shown.
-_KEY_STOCKS = ["DRINK", "FOOD", "MEAT", "FISH", "PLANT", "SEEDS",
-               "WOOD", "BOULDER", "BAR", "CLOTH"]
+# those actually present as item-type categories are shown. FISH_RAW / PLANT_GROWTH
+# are separate item_type slots from FISH / PLANT (raw-caught fish, attached growths);
+# they get their own rows so that stock isn't silently dropped from the headline.
+_KEY_STOCKS = ["DRINK", "FOOD", "MEAT", "FISH", "FISH_RAW", "PLANT",
+               "PLANT_GROWTH", "SEEDS", "WOOD", "BOULDER", "BAR", "CLOTH"]
 
 # Stress threshold mirroring dwarves._stress_word: >= this is "stressed".
 _STRESS_LIMIT = 25000
+
+
+def fetch_key_stocks() -> dict:
+    """Headline stock counts via one focused query per _KEY_STOCKS type, merged
+    into a single {categories} dict for _stocks_block. Runs inside fetch_briefing's
+    open shared_connection (nested shared_connection is a no-op), so it's a handful
+    of near-instant single-type vector scans -- not the ~10s full-fort scan that
+    powers stock_report. Accurate here: every _KEY_STOCKS type has a complete
+    world.items.other[TYPE] vector (unlike in-container BOOK/TOOL)."""
+    cats: dict = {}
+    for tname in _KEY_STOCKS:
+        page = fetch_stock(tname)
+        cats.update(as_map(page.get("categories")))
+    return {"fort_loaded": True, "categories": cats}
 
 
 def fetch_briefing(host: str = "127.0.0.1", port: int = 5000) -> dict:
@@ -65,7 +81,7 @@ def fetch_briefing(host: str = "127.0.0.1", port: int = 5000) -> dict:
         out["moods"] = _safe(out, "moods", fetch_mood)
         out["medical"] = _safe(out, "medical", fetch_medical_intel)
         out["shops"] = _safe(out, "shops", fetch_shops_and_orders)
-        out["stock"] = _safe(out, "stock", fetch_stock)
+        out["stock"] = _safe(out, "stock", fetch_key_stocks)
 
         blockers = []
         for industry, fetch in _DIAGNOSES:
