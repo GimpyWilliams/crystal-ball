@@ -242,3 +242,19 @@ tool has a `*_data` twin that returns the same information as structured JSON.
 the fort-wide tools into one morning briefing. Copy it into your own
 `.claude/commands/` (project) or `~/.claude/commands/` (global) directory, then
 run `/df-report` after loading a save.
+
+### `fort-summary` skill
+
+`skills/fort-summary/SKILL.md` (repo root) is a Claude Code skill that produces
+a short, prose "overseer's briefing" — a few paragraphs of synthesized narrative
+(what matters, what's fine, what to do next), not a raw report dump. It reads
+`fort_briefing_data` plus a full `stock_data(refresh=True)` rebuild, triages the
+result against a fixed priority order (lost citizens first, then survival-stock
+blockers, in-progress moods, hospital gaps, other blockers, elevated stress,
+then "all nominal"), and writes 3-5 short paragraphs. It is strictly read-only
+and never calls any of the seven write ("act") tools. Copy it into your own
+`.claude/skills/` (project) or `~/.claude/skills/` (global) directory, then ask
+for a "fort executive summary" or "how's my fort doing" (or run `/fort-summary`
+if invoked as a slash command). Distinct from `fort_briefing`, which renders the
+same underlying data as an exhaustive section-by-section report instead of a
+narrative.
