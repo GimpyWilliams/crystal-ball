@@ -18,8 +18,12 @@ agent/data/statusline_refresh.lock
 # Debug artifacts
 *.stackdump
 
-# Claude Code project settings (contain local paths)
-.claude/
+# Claude Code project settings. The portable statusline + hook scripts ARE
+# tracked (they use only $HOME / BASH_SOURCE-relative paths); only the two
+# machine-specific settings files (absolute paths / auto-managed permissions)
+# are ignored — the installer regenerates them from setup/dotfiles/project/.
+.claude/settings.json
+.claude/settings.local.json
 
 # One-time local setup scripts
 setup-github.ps1

@@ -1,0 +1,19 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bash __REPO_FWD__/.claude/statusline.sh"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash __REPO_FWD__/.claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
