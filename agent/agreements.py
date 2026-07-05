@@ -41,16 +41,24 @@ def format_agreements_report(data: dict) -> str:
         lines.append("\nStruct paths:")
         lines.extend(probe_lines)
 
-    # Formal agreements (world.agreements, if accessible)
+    # Formal agreements (world.agreements, if accessible) -- historical plots/
+    # schemes, not trade. Capped to the most recent entries; see script.
     agreements = data.get("agreements") or []
     if agreements:
-        lines.append(f"\nFormal agreements: {len(agreements)}")
+        total = data.get("agreements_total", len(agreements))
+        lines.append(f"\nFormal agreements: {total} total (showing {len(agreements)} most recent)")
         for a in agreements:
-            parties  = a.get("party_ids") or []
-            type_raw = a.get("type_raw", "")
-            party_str = ", ".join(str(p) for p in parties) if parties else "?"
+            entity_ids  = a.get("party_ids") or []
+            histfig_ids = a.get("histfig_ids") or []
+            type_raw    = a.get("type_raw", "")
+            party_bits = []
+            if entity_ids:
+                party_bits.append("entities=" + ", ".join(str(p) for p in entity_ids))
+            if histfig_ids:
+                party_bits.append("histfigs=" + ", ".join(str(h) for h in histfig_ids))
+            party_str = "  ".join(party_bits) if party_bits else "parties=?"
             lines.append(
-                f"  #{a.get('id', '?')}  parties={party_str}"
+                f"  #{a.get('id', '?')}  {party_str}"
                 + (f"  [{type_raw}]" if type_raw else ""))
 
     # Liaison meetings (plotinfo.dip_meeting_info)
@@ -67,7 +75,29 @@ def format_agreements_report(data: dict) -> str:
             lines.append(f"  {dipl} from {civ} ({ctype})")
             lines.append(f"    cur_step={step}  events={evts}")
             for ev in evlist:
-                lines.append(f"    event: type={ev.get('type')}  year={ev.get('year')}")
+                type_label = ev.get("type_name") or f"type={ev.get('type')}"
+                lines.append(f"    {type_label}  (year={ev.get('year')})")
+
+                exp = ev.get("export_agreement")
+                if exp:
+                    lines.append(f"      Export agreement (baseline={exp.get('baseline')}):")
+                    for cat in exp.get("categories") or []:
+                        catname = cat.get("category")
+                        for entry in cat.get("entries") or []:
+                            label = entry.get("material") or f"{catname}[{entry.get('index')}]"
+                            lines.append(f"        {label}: {entry.get('value')}")
+
+                imp = ev.get("import_agreement")
+                if imp:
+                    lines.append("      Import agreement (requested goods):")
+                    for item in imp:
+                        parts = [item.get("item_type", "?")]
+                        if item.get("item_subtype"):
+                            parts.append(item["item_subtype"])
+                        if item.get("material"):
+                            parts.append(item["material"])
+                        lines.append(
+                            f"        {' '.join(parts)}  priority={item.get('priority')}")
     else:
         lines.append("\nNo active liaison meetings.")
 
