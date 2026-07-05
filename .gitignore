@@ -12,12 +12,17 @@ env/
 agent/data/raws_*.json
 agent/data/stock_*.json
 agent/data/trade_history.json
+agent/data/statusline_cache.json
+agent/data/statusline_refresh.lock
 
 # Debug artifacts
 *.stackdump
 
 # Claude Code project settings (contain local paths)
 .claude/
+
+# One-time local setup scripts
+setup-github.ps1
 
 # Reference / vendored example — influence only, not used in this project
 reference/
