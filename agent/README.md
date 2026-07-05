@@ -235,3 +235,10 @@ claude mcp add crystal-ball -- ^
 Then just ask, e.g. *"Why aren't my dwarves cooking?"* or *"What's blocking my
 metal industry?"* — the assistant calls the matching `diagnose_*` tool. Every
 tool has a `*_data` twin that returns the same information as structured JSON.
+
+### `/df-report` slash command
+
+`commands/df-report.md` (repo root) is a Claude Code slash command that batches
+the fort-wide tools into one morning briefing. Copy it into your own
+`.claude/commands/` (project) or `~/.claude/commands/` (global) directory, then
+run `/df-report` after loading a save.
