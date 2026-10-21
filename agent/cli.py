@@ -36,6 +36,9 @@ Act subcommands (default = advise; writes need both --apply and --confirm):
     boost-mood                              top up alcohol + mood advice
     hospital-supplies <field> <max> ...     set hospital supply maximum(s)
     set-hotkey <key_id> <name> <x> <y> <z> set/clear an F-key map bookmark
+    rename-stockpiles <file.json>           rename piles from {"16": "FURN-Stone"}
+    stockpile-settings <file.json>          furniture types / caps, e.g.
+                                            {"53": {"furniture_types": ["BARREL"]}}
   Flags: --preview (exact plan, no write), --apply --confirm (write).
 
 Examples:
@@ -120,8 +123,10 @@ from mutations import (
     fix_idle,
     manage_containers,
     queue_work_order,
+    rename_stockpiles,
     set_hospital_supplies,
     set_hotkey,
+    set_stockpile_settings,
 )
 from dfhack_rpc.client import DFHackError
 
@@ -185,6 +190,13 @@ def _parse_supplies(args: list[str]) -> dict:
     return {args[i]: int(args[i + 1]) for i in range(0, len(args), 2)}
 
 
+def _load_renames(path: str) -> dict:
+    """Read a JSON object keyed by stockpile number from a file."""
+    import json
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
 _ACTIONS = {
     "queue-order": lambda a, m, c: queue_work_order(
         a[0], int(a[1]) if len(a) > 1 else 10,
@@ -196,6 +208,10 @@ _ACTIONS = {
     "boost-mood": lambda a, m, c: boost_mood(mode=m, confirm=c),
     "hospital-supplies": lambda a, m, c: set_hospital_supplies(
         _parse_supplies(a), mode=m, confirm=c),
+    "rename-stockpiles": lambda a, m, c: rename_stockpiles(
+        _load_renames(a[0]), mode=m, confirm=c),
+    "stockpile-settings": lambda a, m, c: set_stockpile_settings(
+        _load_renames(a[0]), mode=m, confirm=c),
     "set-hotkey": lambda a, m, c: set_hotkey(
         int(a[0]), a[1] if len(a) > 1 else "",
         int(a[2]) if len(a) > 2 else 0,

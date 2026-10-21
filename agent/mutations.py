@@ -589,6 +589,355 @@ def set_hotkey(key_id, name, x=0, y=0, z=0, mode="advise", confirm=False,
     return _render(plan, mode, confirm, host, port)
 
 
+# --- 8. rename_stockpiles (reversible, label-only write) --------------------
+# Sets building_stockpilest.name. Changes the display label only -- never what a
+# pile accepts, its extents, links or contents. Reversible: rename back.
+
+_NAME_MAX = 40
+_NAME_OK = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+               "0123456789-_ /")
+
+
+def _format_rename_result(res):
+    created = res.get("created") or []
+    errs = res.get("errors") or []
+    if not res.get("ok"):
+        lines = ["Apply did not fully succeed (validation failures write nothing).",
+                 "Problems:"]
+        lines += [f"  - {e}" for e in errs]
+        if created:
+            lines.insert(1, f"({len(created)} rename(s) applied before the problem.)")
+        return "\n".join(lines)
+    lines = [f"Done. Renamed {len(created)} stockpile(s):"]
+    for c in sorted(created, key=lambda c: c.get("number", 0)):
+        lines.append(f"  #{c.get('number')}: {c.get('old') or '(unnamed)'!r} -> "
+                     f"{c.get('new')!r}")
+    lines.append("\nReversible: call rename_stockpiles again with the old names "
+                 "shown above (use the pile's current name as the old one).")
+    return "\n".join(lines)
+
+
+def rename_stockpiles(renames, mode="advise", confirm=False,
+                      host="127.0.0.1", port=5000):
+    """Rename stockpiles by number (reversible, label only). `renames` maps a
+    stockpile number to its new name, e.g. {16: "FURN-Stone"}. The plan is built
+    from the LIVE names; the Lua refuses any pile whose name changed since."""
+    from pipelines import fetch_stockpile_config
+
+    # 1. Validate inputs python-side for friendly messages (the Lua revalidates).
+    errors, clean = [], {}
+    for k, v in (renames or {}).items():
+        try:
+            num = int(k)
+        except (TypeError, ValueError):
+            errors.append(f"{k!r}: stockpile number must be an integer")
+            continue
+        name = str(v).strip() if v is not None else ""
+        if not name or len(name) > _NAME_MAX:
+            errors.append(f"#{num}: name must be 1-{_NAME_MAX} characters")
+        elif any(ch not in _NAME_OK for ch in name):
+            errors.append(f"#{num}: {name!r} may only use letters, digits, "
+                          "space, - _ /")
+        else:
+            clean[num] = name
+    dupes = {n for n in clean.values() if list(clean.values()).count(n) > 1}
+    if dupes:
+        errors.append("duplicate new names: " + ", ".join(sorted(dupes)))
+    if errors:
+        return _render(_plan(False, "", reason="; ".join(errors)),
+                       mode, confirm, host, port)
+    if not clean:
+        return _render(_plan(False, "", reason="no renames given"),
+                       mode, confirm, host, port)
+
+    # 2. Read the live names so the plan shows old -> new and apply can detect drift.
+    data = fetch_stockpile_config(host=host, port=port)
+    if not data.get("fort_loaded"):
+        return _render(_plan(False, "", reason="no fortress is loaded"),
+                       mode, confirm, host, port)
+    live = {s.get("number"): s for s in (data.get("stockpiles") or [])}
+    missing = sorted(n for n in clean if n not in live)
+    if missing:
+        return _render(_plan(False, "", reason="no stockpile numbered "
+                       + ", ".join(f"#{n}" for n in missing)),
+                       mode, confirm, host, port)
+    held = {live[n].get("name") or "" for n in live if n not in clean}
+    clash = sorted(n for n in clean.values() if n in held)
+    if clash:
+        return _render(_plan(False, "", reason="name(s) already used by a pile "
+                       "not being renamed: " + ", ".join(clash)),
+                       mode, confirm, host, port)
+
+    changes, payload, same = [], [], 0
+    for num in sorted(clean):
+        old = live[num].get("name") or ""
+        if old == clean[num]:
+            same += 1
+            continue
+        p = live[num].get("pos") or {}
+        where = f" [z{p['z']}]" if "z" in p else ""
+        changes.append(f"#{num}{where}: {old or '(unnamed)'!r} -> {clean[num]!r}")
+        payload.append({"number": num, "expect_old": old, "new": clean[num]})
+    if not payload:
+        return _render(_plan(False, "", reason="every pile already has the "
+                       "requested name"), mode, confirm, host, port)
+
+    facts = [f"{len(payload)} of {len(live)} stockpiles would be renamed"
+             + (f" ({same} already match)" if same else "")]
+    plan = _plan(
+        True, f"Rename {len(payload)} stockpile(s) (label only).",
+        facts=facts, changes=changes,
+        advice=["In-game: select the stockpile, open its settings, and edit the "
+                "name field at the top. Names do not change what a pile accepts."],
+        action_script="rename_stockpiles.lua",
+        action_payload={"renames": payload},
+        render_result=_format_rename_result,
+    )
+    return _render(plan, mode, confirm, host, port)
+
+
+# --- 9. set_stockpile_settings (reversible, furniture types + container caps) -
+# Sets one category's accept-filter (Furniture types) and the bin / barrel /
+# wheelbarrow caps. Never touches other categories, names, extents or links.
+# Reversible: the apply result lists each pile's old state to set back.
+
+_CAP_KEYS = ("max_bins", "max_barrels", "max_wheelbarrows")
+_FURN_MODES = ("furniture_types", "furniture_except", "untick_types",
+               "disable_furniture")
+_QUALITIES = ("Ordinary", "WellCrafted", "FinelyCrafted", "Superior",
+              "Exceptional", "Masterful", "Artifact")
+
+
+def _norm_quality(v):
+    """'Finely-crafted' / 'finelycrafted' / 2 -> the df.item_quality name."""
+    if isinstance(v, int) and not isinstance(v, bool) and 0 <= v < len(_QUALITIES):
+        return _QUALITIES[v]
+    key = "".join(ch for ch in str(v).lower() if ch.isalpha())
+    for q in _QUALITIES:
+        if q.lower() == key:
+            return q
+    return None
+
+
+def _furn_desc(sp):
+    if "furniture" not in (sp.get("accepts") or []):
+        return "Furniture off"
+    off = sp.get("furniture_off") or []
+    on = sp.get("furniture_types") or []
+    if not off:
+        return "all furniture types"
+    if len(on) <= len(off):
+        return "only " + ", ".join(on) if on else "no furniture types"
+    return "all furniture types except " + ", ".join(off)
+
+
+def _format_settings_result(res):
+    created = res.get("created") or []
+    errs = res.get("errors") or []
+    if not res.get("ok"):
+        lines = ["Apply did not fully succeed (validation failures write nothing).",
+                 "Problems:"]
+        lines += [f"  - {e}" for e in errs]
+        if created:
+            lines.insert(1, f"({len(created)} pile(s) changed before the problem.)")
+        return "\n".join(lines)
+    lines = [f"Done. Updated {len(created)} stockpile(s):"]
+    for c in sorted(created, key=lambda c: c.get("number", 0)):
+        b, a = as_map(c.get("before")), as_map(c.get("after"))
+        lines.append(f"  #{c.get('number')} {c.get('name') or '(unnamed)'}:")
+        for label, s in (("before", b), ("after", a)):
+            types = s.get("types") or []
+            furn = (("furniture " + ", ".join(types)) if types
+                    else "no furniture types") \
+                if s.get("furniture") else "Furniture off"
+            fg = s.get("fg_types") or []
+            fgs = (("finished goods " + (", ".join(fg) if len(fg) < 20
+                                         else f"{len(fg)} types"))
+                   if s.get("finished_goods") else "Finished goods off")
+            if s.get("finished_goods"):
+                fgs += (f" ({s.get('fg_mat_count')} materials"
+                        + ("" if s.get("fg_other_mat_count") else ", no organics")
+                        + ")")
+            if s.get("coins"):
+                fgs += f"; coins ({s.get('coin_mat_count')} materials)"
+            qs = ((s.get("fg_qualities") if s.get("finished_goods") else None)
+                  or (s.get("furniture_qualities") if s.get("furniture") else None)
+                  or [])
+            q = (f"quality {qs[0]}+" if qs and len(qs) < len(_QUALITIES)
+                 else "any quality")
+            caps = " ".join(f"{k[4:]}={s.get(k)}" for k in _CAP_KEYS)
+            lines.append(f"    {label}: {furn}; {fgs}; {q}; {caps}")
+    lines.append("\nReversible: call set_stockpile_settings again with the "
+                 "'before' values shown above.")
+    return "\n".join(lines)
+
+
+def set_stockpile_settings(piles, mode="advise", confirm=False,
+                           host="127.0.0.1", port=5000):
+    """Set Furniture accept-types and container caps on stockpiles by number
+    (reversible). `piles` maps a number to a dict with at most one of
+    furniture_types (exact list; enables Furniture), furniture_except (every
+    type but these), untick_types (list to turn off) or disable_furniture
+    (true), plus optional finished_goods_types (exact df.item_type list;
+    enables Finished goods), min_quality (applies to the categories set), and
+    max_bins / max_barrels / max_wheelbarrows. The plan is built from live config; the Lua refuses any
+    pile whose name changed since."""
+    from pipelines import fetch_stockpile_config
+
+    # 1. Validate inputs python-side for friendly messages (the Lua revalidates).
+    errors, clean = [], {}
+    for k, v in (piles or {}).items():
+        try:
+            num = int(k)
+        except (TypeError, ValueError):
+            errors.append(f"{k!r}: stockpile number must be an integer")
+            continue
+        v = as_map(v)
+        unknown = sorted(set(v) - set(_CAP_KEYS) - set(_FURN_MODES)
+                         - {"finished_goods_types", "min_quality",
+                            "finished_goods_materials",
+                            "finished_goods_materials_except",
+                            "finished_goods_other_materials",
+                            "coin_materials"})
+        if unknown:
+            errors.append(f"#{num}: unknown field(s) {', '.join(unknown)}")
+            continue
+        modes = [m for m in _FURN_MODES if v.get(m)]
+        if len(modes) > 1:
+            errors.append(f"#{num}: give only one of {', '.join(_FURN_MODES)}")
+            continue
+        entry = {}
+        for m in modes:
+            if m == "disable_furniture":
+                entry[m] = True
+            elif not isinstance(v[m], list) or not v[m]:
+                errors.append(f"#{num}: {m} must be a non-empty list")
+            else:
+                entry[m] = [str(t).strip().upper() for t in v[m]]
+        if "finished_goods_types" in v:
+            fg = v["finished_goods_types"]
+            if not isinstance(fg, list) or not fg:
+                errors.append(f"#{num}: finished_goods_types must be a non-empty list")
+            else:
+                entry["finished_goods_types"] = [str(x).strip().upper() for x in fg]
+        for key in ("finished_goods_materials", "finished_goods_materials_except",
+                    "coin_materials"):
+            if key in v:
+                m = v[key]
+                if not isinstance(m, list) or not m:
+                    errors.append(f"#{num}: {key} must be a non-empty list")
+                else:
+                    entry[key] = [str(x).strip().upper() for x in m]
+        if "finished_goods_materials_except" in entry                 and "finished_goods_materials" not in entry:
+            errors.append(f"#{num}: finished_goods_materials_except needs "
+                          "finished_goods_materials")
+        if "finished_goods_other_materials" in v:
+            if not isinstance(v["finished_goods_other_materials"], bool):
+                errors.append(f"#{num}: finished_goods_other_materials must be "
+                              "true or false")
+            else:
+                entry["finished_goods_other_materials"] =                     v["finished_goods_other_materials"]
+        if "min_quality" in v:
+            q = _norm_quality(v["min_quality"])
+            if q is None:
+                errors.append(f"#{num}: unknown quality {v['min_quality']!r} "
+                              f"(use {', '.join(_QUALITIES)})")
+            else:
+                entry["min_quality"] = q
+        for cap in _CAP_KEYS:
+            if cap in v:
+                try:
+                    n = int(v[cap])
+                except (TypeError, ValueError):
+                    errors.append(f"#{num}: {cap} must be an integer")
+                    continue
+                if n < 0:
+                    errors.append(f"#{num}: {cap} must be >= 0")
+                    continue
+                entry[cap] = n
+        if not entry:
+            errors.append(f"#{num}: nothing to change")
+        clean[num] = entry
+    if errors:
+        return _render(_plan(False, "", reason="; ".join(errors)),
+                       mode, confirm, host, port)
+    if not clean:
+        return _render(_plan(False, "", reason="no piles given"),
+                       mode, confirm, host, port)
+
+    # 2. Read the live config so the plan shows before -> after.
+    data = fetch_stockpile_config(host=host, port=port)
+    if not data.get("fort_loaded"):
+        return _render(_plan(False, "", reason="no fortress is loaded"),
+                       mode, confirm, host, port)
+    live = {s.get("number"): s for s in (data.get("stockpiles") or [])}
+    missing = sorted(n for n in clean if n not in live)
+    if missing:
+        return _render(_plan(False, "", reason="no stockpile numbered "
+                       + ", ".join(f"#{n}" for n in missing)),
+                       mode, confirm, host, port)
+
+    changes, payload = [], []
+    for num in sorted(clean):
+        sp, e = live[num], clean[num]
+        p = sp.get("pos") or {}
+        name = sp.get("name") or "(unnamed)"
+        head = f"#{num} {name}" + (f" [z{p['z']}]" if "z" in p else "")
+        parts = []
+        if "furniture_types" in e:
+            parts.append(f"{_furn_desc(sp)} -> only {', '.join(e['furniture_types'])}")
+        elif "furniture_except" in e:
+            parts.append(f"{_furn_desc(sp)} -> all furniture types except "
+                         f"{', '.join(e['furniture_except'])}")
+        elif "untick_types" in e:
+            parts.append(f"{_furn_desc(sp)} -> untick {', '.join(e['untick_types'])}")
+        elif "disable_furniture" in e:
+            parts.append(f"{_furn_desc(sp)} -> Furniture off")
+        if "finished_goods_types" in e:
+            now = "on" if "finished_goods" in (sp.get("accepts") or []) else "off"
+            parts.append(f"Finished goods ({now}) -> only "
+                         f"{', '.join(e['finished_goods_types'])}")
+        if "finished_goods_materials" in e:
+            ex = e.get("finished_goods_materials_except")
+            parts.append("finished goods materials -> only "
+                         + ", ".join(e["finished_goods_materials"])
+                         + (f" except {', '.join(ex)}" if ex else ""))
+        if "finished_goods_other_materials" in e:
+            parts.append("wood/bone/glass/other materials -> "
+                         + ("on" if e["finished_goods_other_materials"] else "off"))
+        if "coin_materials" in e:
+            now = "on" if "coins" in (sp.get("accepts") or []) else "off"
+            parts.append(f"Coins ({now}) -> only {', '.join(e['coin_materials'])}")
+        if "min_quality" in e:
+            parts.append(f"quality -> {e['min_quality']} and better")
+        for cap in _CAP_KEYS:
+            if cap in e:
+                parts.append(f"{cap[4:]} {sp.get(cap)} -> {e[cap]}")
+        others = [c for c in (sp.get("accepts") or [])
+                  if c != "furniture"
+                  and not ("finished_goods_types" in e and c == "finished_goods")
+                  and not ("coin_materials" in e and c == "coins")]
+        if others:
+            parts.append(f"(other categories left as is: {', '.join(others)})")
+        changes.append(f"{head}: " + "; ".join(parts))
+        payload.append({"number": num, "expect_name": sp.get("name") or "", **e})
+
+    plan = _plan(
+        True, f"Update Furniture types / container caps on {len(payload)} "
+        "stockpile(s).",
+        facts=[f"{len(payload)} of {len(live)} stockpiles would change"],
+        changes=changes,
+        advice=["In-game: select the stockpile -> settings -> Furniture to tick "
+                "or untick types; the bin / barrel / wheelbarrow limits are on "
+                "the same panel. The Steam build may reset those limits when you "
+                "press Custom, so set them last."],
+        action_script="set_stockpile_settings.lua",
+        action_payload={"piles": payload},
+        render_result=_format_settings_result,
+    )
+    return _render(plan, mode, confirm, host, port)
+
+
 # --- 6 (original). set_hospital_supplies ------------------------------------
 
 def set_hospital_supplies(supplies, hospital="", mode="advise", confirm=False,

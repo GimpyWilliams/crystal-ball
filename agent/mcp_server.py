@@ -143,6 +143,8 @@ from mutations import (
     manage_containers as _manage_containers,
     queue_work_order as _queue_work_order,
     set_hospital_supplies as _set_hospital_supplies,
+    rename_stockpiles as _rename_stockpiles,
+    set_stockpile_settings as _set_stockpile_settings,
     set_hotkey as _set_hotkey,
 )
 from dfhack_rpc.client import DFHackError
@@ -1109,6 +1111,42 @@ def set_hotkey(key_id: int, name: str, x: int = 0, y: int = 0, z: int = 0,
     WRITES the bookmark (reversible: call again with the old values to restore).
     WRITES ONLY in apply+confirm."""
     return _safe2(_set_hotkey, key_id, name, x, y, z, mode, confirm)
+
+
+@mcp.tool()
+def rename_stockpiles(renames: dict, mode: str = "advise",
+                      confirm: bool = False) -> str:
+    """Rename stockpiles (label only, reversible). `renames` maps a stockpile
+    NUMBER (as in stockpile_config) to its new name, e.g. {"16": "FURN-Stone"};
+    names are 1-40 chars of letters, digits, space, - _ /. Never changes what a
+    pile accepts, its size, links or contents. The plan is built from live names
+    and apply refuses any pile renamed since the preview, writing nothing if any
+    entry is invalid. mode='advise' (default) and 'preview' are read-only;
+    mode='apply' with confirm=true WRITES the names. Undo by renaming back."""
+    return _safe2(_rename_stockpiles, renames, mode, confirm)
+
+
+@mcp.tool()
+def set_stockpile_settings(piles: dict, mode: str = "advise",
+                           confirm: bool = False) -> str:
+    """Set a stockpile's Furniture accept-types and container caps (reversible).
+    `piles` maps a stockpile NUMBER to a dict with at most one of
+    furniture_types (exact list of df.furniture_type names, e.g. ["BARREL"];
+    enables Furniture), furniture_except (every type but these), untick_types
+    (list to turn off) or disable_furniture (true), plus optional
+    finished_goods_types (exact df.item_type list, e.g. ["TOOL"]; enables
+    Finished goods), min_quality (e.g. "FinelyCrafted"; applies to the
+    categories being set) and max_bins / max_barrels / max_wheelbarrows, e.g.
+    {"53": {"furniture_types": ["BARREL"], "max_barrels": 0}}. Changes only the
+    Furniture, Finished goods and Coins filters. Material filters:
+    finished_goods_materials (inorganic ids such as "GOLD", or "@METAL" /
+    "@NONMETAL"), finished_goods_materials_except, finished_goods_other_materials
+    (true/false for wood, bone, glass etc.) and coin_materials (enables Coins). Never touches
+    other categories, names, extents or links. Apply refuses any pile renamed
+    since the preview and writes nothing if any entry is invalid.
+    mode='advise' (default) and 'preview' are read-only; mode='apply' with
+    confirm=true WRITES. Undo with the 'before' values the apply reports."""
+    return _safe2(_set_stockpile_settings, piles, mode, confirm)
 
 
 def _safe2(fn, *args):

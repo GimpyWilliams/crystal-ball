@@ -619,6 +619,12 @@ def format_stockpile_config(data: dict) -> str:
                 caps.append(f"{label}={sp[key]}")
         if caps:
             lines.append(f"  caps: {', '.join(caps)}")
+        off = sp.get("furniture_off") or []
+        if off and sp.get("furniture_types"):
+            if len(off) < len(sp["furniture_types"]):
+                lines.append(f"  furniture: all types except {', '.join(off)}")
+            else:
+                lines.append(f"  furniture: only {', '.join(sp['furniture_types'])}")
     _append_errors(lines, data)
     return "\n".join(lines)
 

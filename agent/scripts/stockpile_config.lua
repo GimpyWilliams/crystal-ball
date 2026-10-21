@@ -38,21 +38,40 @@ for _, b in ipairs(world.buildings.all) do
 
         -- Which categories this pile accepts (top-level enable flags).
         local enabled = {}
-        pcall(function()
-            for _, cat in ipairs(CATS) do
+        -- Guard each category separately: a flag missing in this DF build
+        -- (e.g. 'ore') must not abort the loop and hide every later category.
+        for _, cat in ipairs(CATS) do
+            pcall(function()
                 if b.settings.flags[cat] then enabled[#enabled + 1] = cat end
-            end
-        end)
+            end)
+        end
         rec.accepts = enabled
 
         -- Links to/from other piles.
         pcall(function() rec.links_give = #b.links.give_to_pile end)
         pcall(function() rec.links_take = #b.links.take_from_pile end)
 
-        -- Container caps: present on some builds, absent on others -- best effort.
-        pcall(function() rec.max_bins = b.max_bins end)
-        pcall(function() rec.max_barrels = b.max_barrels end)
-        pcall(function() rec.max_wheelbarrows = b.max_wheelbarrows end)
+        -- Container caps: b.storage on DF 50+, directly on b on older builds.
+        for _, k in ipairs({ 'max_bins', 'max_barrels', 'max_wheelbarrows' }) do
+            if not pcall(function() rec[k] = b.storage[k] end) then
+                pcall(function() rec[k] = b[k] end)
+            end
+        end
+
+        -- Furniture types it does NOT take (Furniture enabled only), so a pile
+        -- that ticks Furniture but excludes containers is visible.
+        pcall(function()
+            if not b.settings.flags.furniture then return end
+            local t, on, off = b.settings.furniture.type, {}, {}
+            for i = 0, df.furniture_type._last_item do
+                -- vector<char> on DF 50+: 0 is unticked (and truthy in Lua).
+                local v = i < #t and t[i]
+                if v == true or (type(v) == 'number' and v ~= 0) then on[#on + 1] = df.furniture_type[i]
+                else off[#off + 1] = df.furniture_type[i] end
+            end
+            rec.furniture_types = on
+            rec.furniture_off = off
+        end)
 
         piles[#piles + 1] = rec
     end

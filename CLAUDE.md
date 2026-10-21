@@ -48,7 +48,7 @@ scripts/_prelude.lua          # Shared Lua helpers prepended to every READ query
 scripts/<industry>_intel.lua  # One status query per industry
 scripts/diagnose_<industry>.lua
 scripts/actions/_prelude.lua  # Shared helpers prepended to every WRITE script
-scripts/actions/*.lua         # create_order, set_hospital_supplies, set_hotkey
+scripts/actions/*.lua         # create_order, set_hospital_supplies, set_hotkey, rename_stockpiles, set_stockpile_settings
 intel.py    # run_intel(): prepend read prelude, exec script, parse JSON
             # shared_connection(): reuse one socket across a batch of reads
 actions.py  # run_action(): same pattern, for mutation scripts
@@ -94,13 +94,13 @@ Every industry exposes a quartet: `<name>_report` (text), `<name>_data` (JSON), 
 
 ### Write ("act") tools — `mutations.py`
 
-There are **seven** write tools: `queue_work_order`, `auto_stock_target`, `fix_idle`, `manage_containers`, `boost_mood`, `manage_hospital_supplies` (wraps `set_hospital_supplies`), and `set_hotkey`. Every one is mode-gated:
+There are **nine** write tools: `queue_work_order`, `auto_stock_target`, `fix_idle`, `manage_containers`, `boost_mood`, `manage_hospital_supplies` (wraps `set_hospital_supplies`), `set_hotkey`, `rename_stockpiles` (label only; refuses a pile whose name changed since the preview), and `set_stockpile_settings` (Furniture and Finished-goods accept-types, a minimum quality on those two, Finished-goods and Coins material filters, and bin/barrel/wheelbarrow caps only; same name-drift guard). Every one is mode-gated:
 
 - `mode='advise'` (default) — read-only; explains the plan + manual click-path.
 - `mode='preview'` — read-only; shows the exact orders/changes.
 - `mode='apply'` **with `confirm=True`** — the only path that writes.
 
-All writes funnel through `actions.run_action()` into an audited `scripts/actions/*.lua` script that validates every enum (job_type / reaction / material / item_type) *before* mutating and `pcall`-wraps each write, returning `{ok, created[], errors[]}`. Only **reversible** actions are written: manager orders (cancel in-game), hospital supply maximums, hotkey slots. Anything structural — designating a tavern/temple/library/hospital zone, placing a workshop — is returned as advice text only.
+All writes funnel through `actions.run_action()` into an audited `scripts/actions/*.lua` script that validates every enum (job_type / reaction / material / item_type) *before* mutating and `pcall`-wraps each write, returning `{ok, created[], errors[]}`. Only **reversible** actions are written: manager orders (cancel in-game), hospital supply maximums, hotkey slots, stockpile names, stockpile furniture filters and container caps. Anything structural — designating a tavern/temple/library/hospital zone, placing a workshop — is returned as advice text only.
 
 **Do not add new write tools without explicit instruction** (stated in `mcp_server.py`'s module docstring).
 
