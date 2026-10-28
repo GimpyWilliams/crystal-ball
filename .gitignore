@@ -28,6 +28,9 @@ agent/data/statusline_refresh.lock
 # One-time local setup scripts
 setup-github.ps1
 
+# Local Qwen advisor setup (machine-specific paths/IPs; never pushed)
+df_play/
+
 # Reference / vendored example — influence only, not used in this project
 reference/
 

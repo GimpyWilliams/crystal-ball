@@ -1,6 +1,6 @@
 ---
 description: Full Dwarf Fortress morning briefing — dwarf moods, hospital, workshops, key stocks, and flagged blockers across all industries. Run this when you load the game.
-allowed-tools: [mcp__crystal-ball__dwarf_roster, mcp__crystal-ball__zones_report, mcp__crystal-ball__shops_and_orders_report, mcp__crystal-ball__stock_report, mcp__crystal-ball__brewing_report, mcp__crystal-ball__diagnose_metal, mcp__crystal-ball__diagnose_fuel, mcp__crystal-ball__diagnose_farming, mcp__crystal-ball__diagnose_cooking, mcp__crystal-ball__labor_coverage]
+allowed-tools: [mcp__crystal-ball__dwarf_roster, mcp__crystal-ball__zones_report, mcp__crystal-ball__shops_and_orders_report, mcp__crystal-ball__stock_report, mcp__crystal-ball__brewing_report, mcp__crystal-ball__diagnose_metal, mcp__crystal-ball__diagnose_fuel, mcp__crystal-ball__diagnose_farming, mcp__crystal-ball__diagnose_cooking, mcp__crystal-ball__labor_coverage, mcp__crystal-ball__diagnose_medical, mcp__crystal-ball__medical_report, mcp__crystal-ball__dwarf_detail]
 ---
 
 # Dwarf Fortress Morning Report
@@ -19,8 +19,18 @@ Call ALL of these MCP tools simultaneously (one batch):
 - `diagnose_metal` — smelter/forge/ore/fuel pipeline status
 - `diagnose_fuel` — charcoal pipeline status
 - `diagnose_farming` — crop pipeline status
+- `diagnose_medical` — whether any citizen actually needs healthcare (ground truth for wounds)
 
 If any tool call fails (DF not running, etc.), note it and continue with what you have.
+
+## Step 1b — Verify wounds before flagging them
+
+The roster's `wounded` tag is **not** proof anyone needs care: it also marks old, healed, or stable injuries (scars, lingering damage). Never report wounded dwarves as a problem based on the roster tag alone.
+
+If the roster shows any `wounded` dwarves, cross-check with `diagnose_medical` (already in the batch):
+- `wounded = 0` / "0 citizens need healthcare" → the tags are stable/old injuries. Do NOT raise a medical alarm, and do NOT flag the chief medical dwarf being idle.
+- Count > 0 → call `dwarf_detail` on each patient (or the first ~5 if many) to see the actual injuries, then report only those truly needing treatment, with the specific missing labor/supply/bed from the diagnose output.
+- For a wounded dwarf who is also miserable/stressed, `dwarf_detail` them to tell whether the injury or something else (unmet needs) is driving it.
 
 ## Step 2 — Render the report in this exact structure
 
@@ -29,13 +39,14 @@ If any tool call fails (DF not running, etc.), note it and continue with what yo
 #### Dwarves (N total)
 - One line per stress band: how many happy / content / unhappy / miserable
 - List any dwarf in a **strange mood** by name
-- List all **wounded** dwarves by name
+- **Wounded**: only list dwarves confirmed by Step 1b as needing care, by name. If none, one line: "N carry old/stable injuries, none need treatment" (no names)
 - Flag anyone with stress band "ok" or worse by name and profession
 - Note how many are idle vs busy
 
 #### Hospital
 - Show each supply as stocked/max — flag any that are at 0 when max > 0 as CRITICAL
-- Note if chief medical dwarf is idle while wounded dwarves exist
+- Flag the chief medical dwarf being idle ONLY if Step 1b confirmed untreated patients; otherwise omit
+- Hospital supply levels below max are minor restock notes, not alarms, unless patients exist
 
 #### Workshops & Orders
 - List workshops that are idle when they have active manager orders (mismatch = blocker)
