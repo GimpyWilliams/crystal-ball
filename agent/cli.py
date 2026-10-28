@@ -42,6 +42,8 @@ Act subcommands (default = advise; writes need both --apply and --confirm):
     assign-burrow <burrow> <add|remove> <ids | syndrome:CLASS>
                                             add/remove units in an existing burrow
     rename-stockpiles <file.json>           rename piles from {"16": "FURN-Stone"}
+    blueprint <name> [dig,place,build] [undo]
+                                            bundled quickfort blueprint, e.g. g2_pilot
     stockpile-settings <file.json>          furniture types / caps, e.g.
                                             {"53": {"furniture_types": ["BARREL"]}}
   Flags: --preview (exact plan, no write), --apply --confirm (write).
@@ -135,6 +137,7 @@ from mutations import (
     set_hospital_supplies,
     set_hotkey,
     set_stockpile_settings,
+    run_blueprint,
 )
 from dfhack_rpc.client import DFHackError
 
@@ -238,6 +241,9 @@ _ACTIONS = {
         _load_renames(a[0]), mode=m, confirm=c),
     "stockpile-settings": lambda a, m, c: set_stockpile_settings(
         _load_renames(a[0]), mode=m, confirm=c),
+    "blueprint": lambda a, m, c: run_blueprint(
+        a[0], next((x for x in a[1:] if x != "undo"), ""), "undo" in a[1:],
+        mode=m, confirm=c),
     "set-hotkey": lambda a, m, c: set_hotkey(
         int(a[0]), a[1] if len(a) > 1 else "",
         int(a[2]) if len(a) > 2 else 0,

@@ -1,0 +1,236 @@
+{
+ "title": "Lift segment D: two-lane ramp climb, z101 to z110",
+ "description": "Cart climb from the z101 floor at (88,105) to the z110 floor at (89,104). Lane 1 climbs south on x88 (ramps y106-111, z101-106), crosses a flat turn at y112 on z107, and lane 2 climbs north on x89 (ramps y111-109, z107-109) to an exit at (89,108,110). Dug from the top down: each channel removes a tile and leaves the ramp one level below it. Bedrooms at x86-90, y103-106, z107-109 sit 1 tile of rock west and north of the column.",
+ "hotkey": "F12 'Jewelery' (106,96,110): the top end (89,104,110) is 17 tiles west and 8 south of it",
+ "phases": [
+  {
+   "id": "d1",
+   "mode": "dig",
+   "label": "Access at z110: tunnel (89,105)-(89,107) and exit floor (89,108)",
+   "cells": [
+    [
+     89,
+     105,
+     110,
+     "d"
+    ],
+    [
+     89,
+     106,
+     110,
+     "d"
+    ],
+    [
+     89,
+     107,
+     110,
+     "d"
+    ],
+    [
+     89,
+     108,
+     110,
+     "d"
+    ]
+   ]
+  },
+  {
+   "id": "d2",
+   "mode": "dig",
+   "label": "Lane 2 (x89): channels from z110 down to z108, leaving ramps z109-z107, plus the flat turn y112 on z107",
+   "after": "d1 is dug",
+   "cells": [
+    [
+     89,
+     111,
+     108,
+     "h"
+    ],
+    [
+     89,
+     110,
+     109,
+     "h"
+    ],
+    [
+     89,
+     109,
+     110,
+     "h"
+    ],
+    [
+     89,
+     112,
+     107,
+     "d"
+    ],
+    [
+     88,
+     112,
+     107,
+     "d"
+    ]
+   ]
+  },
+  {
+   "id": "d3",
+   "mode": "dig",
+   "label": "Lane 1 (x88): channels z107 down to z102, leaving ramps z106-z101; the last one opens onto the z101 floor",
+   "after": "d2 is dug",
+   "cells": [
+    [
+     88,
+     106,
+     102,
+     "h"
+    ],
+    [
+     88,
+     107,
+     103,
+     "h"
+    ],
+    [
+     88,
+     108,
+     104,
+     "h"
+    ],
+    [
+     88,
+     109,
+     105,
+     "h"
+    ],
+    [
+     88,
+     110,
+     106,
+     "h"
+    ],
+    [
+     88,
+     111,
+     107,
+     "h"
+    ]
+   ]
+  },
+  {
+   "id": "d4",
+   "mode": "dig",
+   "label": "Track: up lane 1, across the turn, up lane 2, out to (89,104,110)",
+   "after": "d1-d3 are dug (track cannot be marked on unrevealed tiles)",
+   "cells": [
+    [
+     88,
+     105,
+     101,
+     "trackS"
+    ],
+    [
+     88,
+     106,
+     101,
+     "trackNS"
+    ],
+    [
+     88,
+     107,
+     102,
+     "trackNS"
+    ],
+    [
+     88,
+     108,
+     103,
+     "trackNS"
+    ],
+    [
+     88,
+     109,
+     104,
+     "trackNS"
+    ],
+    [
+     88,
+     110,
+     105,
+     "trackNS"
+    ],
+    [
+     88,
+     111,
+     106,
+     "trackNS"
+    ],
+    [
+     88,
+     112,
+     107,
+     "trackNE"
+    ],
+    [
+     89,
+     112,
+     107,
+     "trackNW"
+    ],
+    [
+     89,
+     111,
+     107,
+     "trackNS"
+    ],
+    [
+     89,
+     110,
+     108,
+     "trackNS"
+    ],
+    [
+     89,
+     109,
+     109,
+     "trackNS"
+    ],
+    [
+     89,
+     108,
+     110,
+     "trackNS"
+    ],
+    [
+     89,
+     107,
+     110,
+     "trackNS"
+    ],
+    [
+     89,
+     106,
+     110,
+     "trackNS"
+    ],
+    [
+     89,
+     105,
+     110,
+     "trackNS"
+    ],
+    [
+     89,
+     104,
+     110,
+     "trackS"
+    ]
+   ]
+  }
+ ],
+ "manual_steps": [
+  "Run the phases in order, waiting for each to be dug: d1, then d2, then d3, then d4.",
+  "Short test: after d1 and d2, lane 2 alone is a 3-level climb. Push an empty cart up it by hand before digging lane 1.",
+  "Ramp rules here are from community posts, not the wiki; if lane 2 does not carry a cart, undo d3/d4 before they run.",
+  "Undo any phase with undo=true and the same phase id; dug rock cannot be put back, only designations are undone."
+ ]
+}

@@ -36,6 +36,7 @@ Run from `agent/` using the bundled venv (Python 3.13). There is no build, lint,
 .venv\Scripts\python.exe cli.py queue-order MakeCrafts 20 stone --apply --confirm
 .venv\Scripts\python.exe cli.py queue-order MakeTool 6 wood minecart --preview   # item pins a subtype
 .venv\Scripts\python.exe cli.py fix-idle --preview
+.venv\Scripts\python.exe cli.py blueprint g2_pilot dig,place --preview   # bundled quickfort blueprint; add 'undo' to reverse
 #   also: stock-target, containers-fix, boost-mood, hospital-supplies, set-hotkey,
 #         assign-burrow <burrow> <add|remove> <ids | syndrome:CLASS>  (list burrows: cli.py burrows)
 ```
@@ -50,7 +51,8 @@ scripts/_prelude.lua          # Shared Lua helpers prepended to every READ query
 scripts/<industry>_intel.lua  # One status query per industry
 scripts/diagnose_<industry>.lua
 scripts/actions/_prelude.lua  # Shared helpers prepended to every WRITE script
-scripts/actions/*.lua         # create_order, set_hospital_supplies, set_hotkey, rename_stockpiles, set_stockpile_settings, set_burrow_units
+scripts/actions/*.lua         # create_order, set_hospital_supplies, set_hotkey, rename_stockpiles, set_stockpile_settings, set_burrow_units, run_blueprint
+blueprints/*.json             # bundled quickfort blueprints for run_blueprint (absolute map coords; e.g. g2_pilot)
 intel.py    # run_intel(): prepend read prelude, exec script, parse JSON
             # shared_connection(): reuse one socket across a batch of reads
 actions.py  # run_action(): same pattern, for mutation scripts
@@ -98,7 +100,7 @@ Every industry exposes a quartet: `<name>_report` (text), `<name>_data` (JSON), 
 
 ### Write ("act") tools — `mutations.py`
 
-There are **ten** write tools: `queue_work_order` (optional `item` pins the product subtype by name, e.g. `job='MakeTool', item='minecart'`; validated against `world.raws.itemdefs` before writing), `auto_stock_target` (a subtype `item` such as `minecart` pins both the order and its condition), `fix_idle`, `manage_containers`, `boost_mood`, `manage_hospital_supplies` (wraps `set_hospital_supplies`), `set_hotkey`, `rename_stockpiles` (label only; refuses a pile whose name changed since the preview), `set_stockpile_settings` (Furniture and Finished-goods accept-types, a minimum quality on those two, Finished-goods and Coins material filters, and bin/barrel/wheelbarrow caps only; same name-drift guard), and `assign_burrow_units` (add/remove citizens in an **existing** burrow by unit id or `syndrome_class`; never creates, renames or re-tiles a burrow; refuses a burrow renamed since the preview; ≤200 units per call; pair with the read-only `burrows_report`/`burrows_data`). Every one is mode-gated:
+There are **eleven** write tools: `queue_work_order` (optional `item` pins the product subtype by name, e.g. `job='MakeTool', item='minecart'`; validated against `world.raws.itemdefs` before writing), `auto_stock_target` (a subtype `item` such as `minecart` pins both the order and its condition), `fix_idle`, `manage_containers`, `boost_mood`, `manage_hospital_supplies` (wraps `set_hospital_supplies`), `set_hotkey`, `rename_stockpiles` (label only; refuses a pile whose name changed since the preview), `set_stockpile_settings` (Furniture and Finished-goods accept-types, a minimum quality on those two, Finished-goods and Coins material filters, Stone filters by class (`@ORE`/`@ECONOMIC`/`@PLAIN`) or inorganic id, and bin/barrel/wheelbarrow caps only; same name-drift guard), `assign_burrow_units` (add/remove citizens in an **existing** burrow by unit id or `syndrome_class`; never creates, renames or re-tiles a burrow; refuses a burrow renamed since the preview; ≤200 units per call; pair with the read-only `burrows_report`/`burrows_data`), and `run_blueprint` (applies or undoes a **bundled** `agent/blueprints/<name>.json` through DFHack's quickfort API: carved track and other dig designations, stockpiles, planned buildings such as track stops; `phases` limits it to dig/place/build; advise/preview run a quickfort dry run against the live map; `undo=True` reverses it; hauling routes stay manual). Every one is mode-gated:
 
 - `mode='advise'` (default) — read-only; explains the plan + manual click-path.
 - `mode='preview'` — read-only; shows the exact orders/changes.

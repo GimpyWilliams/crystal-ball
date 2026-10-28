@@ -21,6 +21,8 @@ validates every enum before mutating and pcall-wraps each insert.
 """
 
 import json
+import re
+from pathlib import Path
 
 from actions import run_action
 from intel import as_map, shared_connection
@@ -1236,5 +1238,114 @@ def assign_burrow_units(burrow, units=None, syndrome_class="", action="add",
         action_payload={"burrow_id": bid, "expect_name": target.get("name") or "",
                         "action": action, "unit_ids": [c.get("id") for c in todo]},
         render_result=_format_burrow_result,
+    )
+    return _render(plan, mode, confirm, host, port)
+
+
+# --- 11. run_blueprint (reversible: dig/build/place designations) -----------
+# Applies one BUNDLED blueprint (agent/blueprints/<name>.json) through DFHack's
+# quickfort API. Only files in that directory can run; the name is checked
+# against it. Everything written is a designation or planned building that
+# dwarves carry out, and undo=True runs quickfort's own undo over the same
+# cells. advise/preview do a quickfort dry run, which validates without writing.
+
+_BLUEPRINTS = Path(__file__).resolve().parent / "blueprints"
+_BP_MODES = ("dig", "place", "build")
+
+
+def list_blueprints():
+    return sorted(p.stem for p in _BLUEPRINTS.glob("*.json"))
+
+
+def _load_blueprint(name):
+    if not re.fullmatch(r"[a-z0-9_]+", name or ""):
+        return None
+    path = _BLUEPRINTS / f"{name}.json"
+    if not path.is_file():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _format_blueprint_result(res, undo=False):
+    created = res.get("created") or []
+    errs = res.get("errors") or []
+    lines = [] if res.get("ok") else ["Apply did not fully succeed."]
+    verb = "Undid" if undo else "Applied"
+    for c in created:
+        st = ", ".join(f"{s.get('label')}: {s.get('value')}"
+                       for s in c.get("stats") or []) or "nothing changed"
+        lines.append(f"{verb} {c.get('mode')} phase '{c.get('label')}': {st}")
+    if errs:
+        lines.append("Problems:")
+        lines += [f"  - {e}" for e in errs]
+    if res.get("ok") and not undo:
+        lines.append("\nReversible: call again with undo=true for the same phases.")
+    return "\n".join(lines)
+
+
+def run_blueprint(name, phases="", undo=False, mode="advise", confirm=False,
+                  host="127.0.0.1", port=5000):
+    """Apply (or undo) a bundled blueprint: dig designations such as carved
+    track, stockpiles, and planned buildings such as track stops. `phases` is an
+    optional comma list of dig/place/build, or of phase ids from the
+    blueprint, to limit which parts run."""
+    bp = _load_blueprint(name)
+    if bp is None:
+        return _render(_plan(False, "", reason=(
+            f"no bundled blueprint named {name!r}; available: "
+            + (", ".join(list_blueprints()) or "none"))), mode, confirm, host, port)
+
+    want = [p.strip() for p in str(phases or "").split(",") if p.strip()]
+    ids = {ph.get("id") for ph in bp.get("phases") or [] if ph.get("id")}
+    bad = [p for p in want if p not in _BP_MODES and p not in ids]
+    if bad:
+        return _render(_plan(False, "", reason=(
+            f"unknown phase(s) {bad}; use dig, place, build"
+            + (f" or a phase id: {', '.join(sorted(ids))}" if ids else ""))),
+            mode, confirm, host, port)
+    chosen = [ph for ph in bp.get("phases") or []
+              if not want or ph.get("mode") in want or ph.get("id") in want]
+    if not chosen:
+        return _render(_plan(False, "", reason="no phases selected"),
+                       mode, confirm, host, port)
+
+    command = "undo" if undo else "run"
+    # Dry run: quickfort validates every cell against the live map, writes nothing.
+    dry = run_action("run_blueprint.lua", [json.dumps(
+        {"command": command, "dry_run": True, "phases": chosen})],
+        host=host, port=port)
+    if dry.get("errors"):
+        return _render(_plan(False, "", reason="dry run failed: "
+                             + "; ".join(dry["errors"])), mode, confirm, host, port)
+
+    facts = [bp.get("description", "")]
+    if bp.get("hotkey"):
+        facts.append(f"Find it with {bp['hotkey']}.")
+    changes = []
+    for ph, c in zip(chosen, dry.get("created") or []):
+        st = ", ".join(f"{s.get('label')}: {s.get('value')}"
+                       for s in c.get("stats") or []) or "nothing would change"
+        tiles = c.get("tiles") or []
+        shapes = sorted({t.get("shape") for t in tiles})
+        busy = [t for t in tiles if t.get("building")]
+        note = f"; tiles now {', '.join(shapes)}"
+        if busy:
+            note += "; occupied by " + ", ".join(
+                f"{t['building']} at ({t['x']},{t['y']},{t['z']})" for t in busy)
+        after = f" [do after {ph['after']}]" if ph.get("after") and not undo else ""
+        tag = f"{ph.get('mode')} [{ph['id']}]" if ph.get("id") else ph.get("mode")
+        changes.append(f"{tag}: {ph.get('label')}{after} -> {st}{note}")
+    skipped = [ph for ph in bp.get("phases") or [] if ph not in chosen]
+    if skipped:
+        facts.append("Not in this run: " + ", ".join(
+            f"{ph.get('mode')} ({ph.get('label')})" for ph in skipped))
+
+    plan = _plan(
+        True, f"{'Undo' if undo else 'Apply'} blueprint '{name}': {bp.get('title', '')}",
+        facts=facts, changes=changes,
+        advice=bp.get("manual_steps") or [],
+        action_script="run_blueprint.lua",
+        action_payload={"command": command, "dry_run": False, "phases": chosen},
+        render_result=lambda res: _format_blueprint_result(res, undo),
     )
     return _render(plan, mode, confirm, host, port)

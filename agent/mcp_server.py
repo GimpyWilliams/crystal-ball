@@ -13,7 +13,7 @@ process is the loopback DFHack RPC socket on 127.0.0.1:5000.
 Almost every tool here is read-only. The exception is a small, clearly-delimited
 set of "act" tools (queue_work_order, auto_stock_target, fix_idle,
 manage_containers, boost_mood, manage_hospital_supplies, set_hotkey,
-rename_stockpiles, set_stockpile_settings, assign_burrow_units) that make reversible
+rename_stockpiles, set_stockpile_settings, assign_burrow_units, run_blueprint) that make reversible
 writes -- but only when called with mode='apply' AND confirm=True. In their default mode they are
 read-only (advise/preview). All writes go through actions.run_action(), which
 runs only audited mutation scripts and validates every enum before mutating. No
@@ -150,6 +150,7 @@ from mutations import (
     rename_stockpiles as _rename_stockpiles,
     set_stockpile_settings as _set_stockpile_settings,
     set_hotkey as _set_hotkey,
+    run_blueprint as _run_blueprint,
 )
 from dfhack_rpc.client import DFHackError
 
@@ -1119,6 +1120,22 @@ def set_hotkey(key_id: int, name: str, x: int = 0, y: int = 0, z: int = 0,
     WRITES the bookmark (reversible: call again with the old values to restore).
     WRITES ONLY in apply+confirm."""
     return _safe2(_set_hotkey, key_id, name, x, y, z, mode, confirm)
+
+
+@mcp.tool()
+def run_blueprint(name: str, phases: str = "", undo: bool = False,
+                  mode: str = "advise", confirm: bool = False) -> str:
+    """Apply or undo a BUNDLED quickfort blueprint (agent/blueprints/<name>.json;
+    no other source can run) -- dig designations such as carved minecart track,
+    stockpiles, and planned buildings such as track stops. `phases` optionally
+    limits it to a comma list of dig/place/build or of the blueprint's phase ids
+    (e.g. "dig,place" now, "build" once the track is carved). advise/preview run a quickfort dry run against
+    the live map and write nothing; mode='apply' with confirm=true WRITES the
+    designations. Reversible: undo=true removes the same designations. Hauling
+    routes and stop links are not covered; the advice lists them as manual steps.
+    Bundled: g2_pilot (19-tile cart line on x100, z20, with Q20); lift_d
+    (two-lane ramp climb z101 -> z110, dug top-down; phases d1-d4)."""
+    return _safe2(_run_blueprint, name, phases, undo, mode, confirm)
 
 
 @mcp.tool()
