@@ -77,6 +77,34 @@ local MATERIAL_REQUIRED = {
     ConstructStatue = true, WeaveCloth = true,
 }
 
+-- Subtype tables for item types whose product is picked by subtype (MakeTool
+-- builds whichever ITEM_TOOL_* the order names, etc.).
+local _ITEMDEF_TABLE = {
+    TOOL = 'tools', WEAPON = 'weapons', ARMOR = 'armor', SHOES = 'shoes',
+    HELM = 'helms', GLOVES = 'gloves', PANTS = 'pants', SHIELD = 'shields',
+    AMMO = 'ammo', SIEGEAMMO = 'siege_ammo', TRAPCOMP = 'trapcomps',
+    TOY = 'toys', INSTRUMENT = 'instruments', FOOD = 'food',
+}
+
+-- Validate an (item_type name, subtype index) pair. Returns (type_id,
+-- subtype_id, nil) or (nil, nil, err). A missing subtype resolves to -1.
+local function resolve_item_pin(type_name, subtype, what)
+    if type_name == nil then return -1, -1, nil end
+    local tid = df.item_type[type_name]
+    if tid == nil then
+        return nil, nil, what .. ': unknown item_type ' .. tostring(type_name)
+    end
+    if subtype == nil then return tid, -1, nil end
+    local sub = tonumber(subtype)
+    local tbl = _ITEMDEF_TABLE[type_name]
+    local defs = tbl and world.raws.itemdefs[tbl]
+    if not sub or not defs or sub < 0 or sub >= #defs then
+        return nil, nil, what .. ': no ' .. tostring(type_name) ..
+            ' subtype ' .. tostring(subtype)
+    end
+    return tid, sub, nil
+end
+
 -- Validate one order spec WITHOUT writing. Returns (resolved, err) where
 -- `resolved` is a table of vetted fields ready to apply, or err is a string.
 --
@@ -87,7 +115,10 @@ local MATERIAL_REQUIRED = {
 --   material_category  optional flag name on the order's material_category
 --                      bitfield, e.g. "stone" / "wood" / "cloth"
 --   frequency      one of one-time/daily/monthly/seasonal/yearly (default one-time)
---   condition      optional {item_type=, mat_category=, below=N} -> "when < N"
+--   item_type      optional df.item_type name pinning the product, with
+--   item_subtype   an optional itemdef index (e.g. TOOL 16 = minecart)
+--   condition      optional {item_type=, item_subtype=, mat_category=, below=N}
+--                  -> "when < N"
 function validate_order(spec)
     if type(spec) ~= 'table' then return nil, 'order spec is not an object' end
 
@@ -157,12 +188,16 @@ function validate_order(spec)
             "name. Refusing to create an unknown-material order."
     end
 
-    -- A condition needs an item_type that resolves.
+    local item_type, item_subtype, ierr =
+        resolve_item_pin(spec.item_type, spec.item_subtype, 'item')
+    if ierr then return nil, ierr end
+
+    -- A condition needs an item_type (and subtype, if given) that resolves.
     local cond = spec.condition
     if cond ~= nil then
-        if cond.item_type and df.item_type[cond.item_type] == nil then
-            return nil, 'condition: unknown item_type ' .. tostring(cond.item_type)
-        end
+        local _, _, cerr = resolve_item_pin(cond.item_type, cond.item_subtype,
+            'condition')
+        if cerr then return nil, cerr end
         if not tonumber(cond.below) then
             return nil, 'condition: "below" must be a number'
         end
@@ -172,6 +207,7 @@ function validate_order(spec)
         job = jt, reaction_name = spec.reaction_name, amount = math.floor(amount),
         mat_type = mat_type, mat_index = mat_index,
         material_category = matcat, frequency = freq, condition = cond,
+        item_type = item_type, item_subtype = item_subtype,
         label = spec.label or jt,
     }, nil
 end
@@ -181,8 +217,8 @@ function apply_order(v)
     local order = df.manager_order:new()
     order.id = next_order_id()
     order.job_type = df.job_type[v.job]
-    order.item_type = -1
-    order.item_subtype = -1
+    order.item_type = v.item_type or -1
+    order.item_subtype = v.item_subtype or -1
     order.mat_type = v.mat_type or -1
     order.mat_index = v.mat_index or -1
     if v.reaction_name and v.reaction_name ~= '' then
@@ -208,6 +244,9 @@ function apply_order(v)
         c.compare_val = math.floor(tonumber(v.condition.below))
         if v.condition.item_type then
             c.item_type = df.item_type[v.condition.item_type]
+        end
+        if v.condition.item_subtype ~= nil then
+            c.item_subtype = math.floor(tonumber(v.condition.item_subtype))
         end
         if v.condition.mat_category then
             pcall(function()

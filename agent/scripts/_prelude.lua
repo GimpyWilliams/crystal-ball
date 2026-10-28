@@ -139,7 +139,8 @@ end
 --   loose_unreachable, uncollected_web, claimed_job, carried,
 --     forbidden, dumped, melt, trade -> ACQUIRABLE (recoverable, see below)
 --   installed, rotten        -> in total but neither available nor acquirable
---   dead                     -> excluded entirely
+--   dead                     -> excluded entirely (removed/GC'd, or off-map:
+--                               no tile and not held/installed = not in the fort)
 function classify_item(it)
     local f = it.flags
     if f.removed or f.garbage_collect then return 'dead' end
@@ -149,6 +150,13 @@ function classify_item(it)
         -- holder unit (walked through the container chain) decides which.
         if dfhack.items.getHolderUnit(it) ~= nil then return 'carried' end
         return 'in_container'
+    end
+    -- Not held, not installed, and no map tile (pos -30000): the item exists
+    -- only in world history (artifact codices in other sites' libraries, etc.)
+    -- and is not in the fort at all. Exclude it like a dead item.
+    do
+        local p = it.pos
+        if p and p.x < 0 then return 'dead' end
     end
     if f.forbid then return 'forbidden' end
     if f.dump   then return 'dumped' end

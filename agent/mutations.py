@@ -138,7 +138,8 @@ def _orders_block(plan):
         cond = ""
         if o.get("condition"):
             c = o["condition"]
-            cond = f"  [only when {c.get('item_type','item')} < {c.get('below')}]"
+            cond = (f"  [only when {c.get('name') or c.get('item_type','item')}"
+                    f" < {c.get('below')}]")
         mat = _describe_material(o)
         freq = o.get("frequency", "one-time")
         lines.append(f"  - {o.get('label', o['job'])}: {o['amount']}x, "
@@ -225,17 +226,42 @@ def _format_result(res):
 
 # --- 1. queue_work_order ----------------------------------------------------
 
+def _resolve_item_spec(item, host, port):
+    """Free-text item ("minecart", "wheelbarrow") -> order-spec fields pinning
+    the product's item_type/subtype, plus a readable name. Needed for MakeTool
+    and similar jobs, whose product is chosen by subtype. Returns ({}, None) for
+    no item, or (None, error) when the name doesn't resolve."""
+    if not item:
+        return {}, None
+    from resolve import resolve_item, UnknownType
+    try:
+        type_name, sub = resolve_item(item, host=host, port=port)
+    except UnknownType as e:
+        return None, str(e)
+    spec = {"item_type": type_name}
+    if sub is not None:
+        spec["item_subtype"] = int(sub)
+    return spec, None
+
+
 def queue_work_order(job, amount=10, material="any", frequency="one-time",
-                     mode="advise", confirm=False,
+                     mode="advise", confirm=False, item="",
                      host="127.0.0.1", port=5000):
     """Create a single manager order. `job` is a df.job_type name (e.g.
-    'MakeCrafts', 'BrewDrink', 'WeaveCloth')."""
+    'MakeCrafts', 'BrewDrink', 'WeaveCloth'). `item` optionally pins the
+    product by name for subtype-chosen jobs, e.g. job='MakeTool',
+    item='minecart'."""
+    item_spec, err = _resolve_item_spec(item, host, port)
+    if err:
+        return _render(_plan(False, "", reason=err), mode, confirm, host, port)
+    what = f"{job} {item}".strip() if item else job
     order = {"job": job, "amount": int(amount), "frequency": frequency,
-             "label": f"{job} ({material})", **_resolve_material(material)}
+             "label": f"{what} ({material})", **_resolve_material(material),
+             **item_spec}
     plan = _plan(
-        True, f"Queue {amount}x '{job}' (material={material}, repeat={frequency}).",
+        True, f"Queue {amount}x '{what}' (material={material}, repeat={frequency}).",
         orders=[order],
-        advice=[f"Open Manager orders (j-m), add a new order, choose '{job}', "
+        advice=[f"Open Manager orders (j-m), add a new order, choose '{what}', "
                 f"set quantity {amount}" +
                 (f", repeat {frequency}." if frequency != "one-time" else ".")],
     )
@@ -253,33 +279,46 @@ def auto_stock_target(item, target, job=None, material="any", frequency="daily",
                       mode="advise", confirm=False,
                       host="127.0.0.1", port=5000):
     """Create a conditional repeat order that keeps >= `target` of `item` on hand
-    (DF 'when AMOUNT < target'). `item` is a df.item_type name (e.g. 'DRINK')."""
+    (DF 'when AMOUNT < target'). `item` is a df.item_type name (e.g. 'DRINK') or
+    a subtype name (e.g. 'minecart'); a subtype pins both the order's product
+    and its condition, so 'minecart' counts minecarts, not every TOOL."""
+    item_spec, err = _resolve_item_spec(item, host, port)
+    if err:
+        return _render(_plan(False, "", reason=err), mode, confirm, host, port)
+    type_name = item_spec.get("item_type", item)
+    sub = item_spec.get("item_subtype")
     reaction = ""
     if not job:
-        known = _STOCK_TARGET_JOBS.get(item)
+        known = _STOCK_TARGET_JOBS.get(type_name)
         if known:
             job, reaction = known
     # Targeted read of just this one type -- instant, vs a ~10s full-fort scan to
     # read one number (and it warms the stock baseline as a side effect).
-    stock = fetch_stock(item, host=host, port=port)
+    stock = fetch_stock(type_name, host=host, port=port)
     if not stock.get("fort_loaded"):
         return _render(_plan(False, "", reason="no fortress is loaded"),
                        mode, confirm, host, port)
-    have = _free(stock, item)
+    have = _free(stock, type_name)
     if not job:
         plan = _plan(False, "",
                      reason=f"don't know which job makes {item}; pass job=...")
     else:
+        cond = {"item_type": type_name, "below": int(target)}
+        if sub is not None:
+            cond["item_subtype"] = sub
+            cond["name"] = item  # display only; the Lua ignores it
         order = {"job": job, "reaction_name": reaction,
-                 "amount": int(target), "material_category": _matcat(material),
-                 "frequency": frequency,
-                 "condition": {"item_type": item, "below": int(target)},
-                 "label": f"keep {item} >= {target}"}
+                 "amount": int(target), **_resolve_material(material),
+                 "frequency": frequency, "condition": cond,
+                 "label": f"keep {item} >= {target}", **item_spec}
+        have_note = (f"{type_name} on hand now: {have} (all subtypes; the "
+                     f"order's condition counts {item} only)" if sub is not None
+                     else f"{item} on hand now: {have} (target {target})")
         plan = _plan(
             True,
-            f"Keep at least {target} {item} on hand (auto-brew when below).",
+            f"Keep at least {target} {item} on hand (re-queue when below).",
             orders=[order],
-            facts=[f"{item} on hand now: {have} (target {target})"],
+            facts=[have_note],
             advice=[f"Add a '{job}' manager order, set quantity {target}, set "
                     f"repeat {frequency}, then add a condition: "
                     f"amount of {item} < {target}."],
@@ -704,6 +743,8 @@ def rename_stockpiles(renames, mode="advise", confirm=False,
 _CAP_KEYS = ("max_bins", "max_barrels", "max_wheelbarrows")
 _FURN_MODES = ("furniture_types", "furniture_except", "untick_types",
                "disable_furniture")
+_FG_MODES = ("finished_goods_types", "finished_goods_untick",
+             "disable_finished_goods")
 _QUALITIES = ("Ordinary", "WellCrafted", "FinelyCrafted", "Superior",
               "Exceptional", "Masterful", "Artifact")
 
@@ -760,6 +801,8 @@ def _format_settings_result(res):
                         + ")")
             if s.get("coins"):
                 fgs += f"; coins ({s.get('coin_mat_count')} materials)"
+            if s.get("stone"):
+                fgs += f"; stone ({s.get('stone_mat_count')} materials)"
             qs = ((s.get("fg_qualities") if s.get("finished_goods") else None)
                   or (s.get("furniture_qualities") if s.get("furniture") else None)
                   or [])
@@ -794,11 +837,13 @@ def set_stockpile_settings(piles, mode="advise", confirm=False,
             continue
         v = as_map(v)
         unknown = sorted(set(v) - set(_CAP_KEYS) - set(_FURN_MODES)
-                         - {"finished_goods_types", "min_quality",
+                         - {"finished_goods_types", "finished_goods_untick",
+                            "disable_finished_goods", "min_quality",
                             "finished_goods_materials",
                             "finished_goods_materials_except",
                             "finished_goods_other_materials",
-                            "coin_materials"})
+                            "coin_materials", "stone_materials",
+                            "stone_untick"})
         if unknown:
             errors.append(f"#{num}: unknown field(s) {', '.join(unknown)}")
             continue
@@ -814,20 +859,28 @@ def set_stockpile_settings(piles, mode="advise", confirm=False,
                 errors.append(f"#{num}: {m} must be a non-empty list")
             else:
                 entry[m] = [str(t).strip().upper() for t in v[m]]
-        if "finished_goods_types" in v:
-            fg = v["finished_goods_types"]
-            if not isinstance(fg, list) or not fg:
-                errors.append(f"#{num}: finished_goods_types must be a non-empty list")
+        fg_modes = [m for m in _FG_MODES if v.get(m)]
+        if len(fg_modes) > 1:
+            errors.append(f"#{num}: give only one of {', '.join(_FG_MODES)}")
+            continue
+        for m in fg_modes:
+            if m == "disable_finished_goods":
+                entry[m] = True
+            elif not isinstance(v[m], list) or not v[m]:
+                errors.append(f"#{num}: {m} must be a non-empty list")
             else:
-                entry["finished_goods_types"] = [str(x).strip().upper() for x in fg]
+                entry[m] = [str(x).strip().upper() for x in v[m]]
         for key in ("finished_goods_materials", "finished_goods_materials_except",
-                    "coin_materials"):
+                    "coin_materials", "stone_materials", "stone_untick"):
             if key in v:
                 m = v[key]
                 if not isinstance(m, list) or not m:
                     errors.append(f"#{num}: {key} must be a non-empty list")
                 else:
                     entry[key] = [str(x).strip().upper() for x in m]
+        if "stone_materials" in entry and "stone_untick" in entry:
+            errors.append(f"#{num}: give only one of stone_materials, "
+                          "stone_untick")
         if "finished_goods_materials_except" in entry                 and "finished_goods_materials" not in entry:
             errors.append(f"#{num}: finished_goods_materials_except needs "
                           "finished_goods_materials")
@@ -897,6 +950,13 @@ def set_stockpile_settings(piles, mode="advise", confirm=False,
             now = "on" if "finished_goods" in (sp.get("accepts") or []) else "off"
             parts.append(f"Finished goods ({now}) -> only "
                          f"{', '.join(e['finished_goods_types'])}")
+        elif "finished_goods_untick" in e:
+            parts.append("Finished goods -> untick "
+                         f"{', '.join(e['finished_goods_untick'])} "
+                         "(other types left as is)")
+        elif "disable_finished_goods" in e:
+            now = "on" if "finished_goods" in (sp.get("accepts") or []) else "off"
+            parts.append(f"Finished goods ({now}) -> off")
         if "finished_goods_materials" in e:
             ex = e.get("finished_goods_materials_except")
             parts.append("finished goods materials -> only "
@@ -908,6 +968,11 @@ def set_stockpile_settings(piles, mode="advise", confirm=False,
         if "coin_materials" in e:
             now = "on" if "coins" in (sp.get("accepts") or []) else "off"
             parts.append(f"Coins ({now}) -> only {', '.join(e['coin_materials'])}")
+        if "stone_materials" in e:
+            now = "on" if "stone" in (sp.get("accepts") or []) else "off"
+            parts.append(f"Stone ({now}) -> only {', '.join(e['stone_materials'])}")
+        if "stone_untick" in e:
+            parts.append(f"Stone -> untick {', '.join(e['stone_untick'])}")
         if "min_quality" in e:
             parts.append(f"quality -> {e['min_quality']} and better")
         for cap in _CAP_KEYS:
@@ -915,8 +980,10 @@ def set_stockpile_settings(piles, mode="advise", confirm=False,
                 parts.append(f"{cap[4:]} {sp.get(cap)} -> {e[cap]}")
         others = [c for c in (sp.get("accepts") or [])
                   if c != "furniture"
-                  and not ("finished_goods_types" in e and c == "finished_goods")
-                  and not ("coin_materials" in e and c == "coins")]
+                  and not (c == "finished_goods" and any(m in e for m in _FG_MODES))
+                  and not ("coin_materials" in e and c == "coins")
+                  and not (("stone_materials" in e or "stone_untick" in e)
+                           and c == "stone")]
         if others:
             parts.append(f"(other categories left as is: {', '.join(others)})")
         changes.append(f"{head}: " + "; ".join(parts))
@@ -1018,5 +1085,156 @@ def set_hospital_supplies(supplies, hospital="", mode="advise", confirm=False,
         action_script="set_hospital_supplies.lua",
         action_payload={"hospital": hospital or "", "supplies": clean},
         render_result=_format_zone_result,
+    )
+    return _render(plan, mode, confirm, host, port)
+
+
+# --- 10. assign_burrow_units (reversible, unit-assignment write) ------------
+# Adds units to / removes units from ONE existing burrow's assigned-unit list.
+# Never creates, deletes, renames or re-tiles a burrow. Reversible: run the
+# opposite action on the same units (the apply result lists them).
+
+_BURROW_MAX_UNITS = 200
+
+
+def _format_burrow_result(res):
+    created = res.get("created") or []
+    skipped = res.get("skipped") or []
+    errs = res.get("errors") or []
+    if not res.get("ok"):
+        lines = ["Apply did not fully succeed (validation failures write nothing).",
+                 "Problems:"]
+        lines += [f"  - {e}" for e in errs]
+        if created:
+            lines.insert(1, f"({len(created)} assignment(s) changed before the "
+                            "problem.)")
+        return "\n".join(lines)
+    adding = bool(created) and created[0].get("new") == "assigned"
+    verb = "Assigned" if adding else "Removed"
+    lines = [f"Done. {verb} {len(created)} unit(s):"]
+    for c in created:
+        lines.append(f"  #{c.get('unit')}  {c.get('name')}: "
+                     f"{c.get('old')} -> {c.get('new')}")
+    if skipped:
+        lines.append(f"Skipped {len(skipped)} already in the requested state.")
+    if errs:
+        lines.append("Some entries were skipped:")
+        lines += [f"  - {e}" for e in errs]
+    undo = "remove" if adding else "add"
+    lines.append(f"\nReversible: call assign_burrow_units again with "
+                 f"action='{undo}' on the same unit ids shown above.")
+    return "\n".join(lines)
+
+
+def assign_burrow_units(burrow, units=None, syndrome_class="", action="add",
+                        mode="advise", confirm=False,
+                        host="127.0.0.1", port=5000):
+    """Add/remove citizens to/from an EXISTING burrow (reversible). `burrow` is a
+    burrow id (see burrows_report) or an exact name. Select units with `units` (a
+    list of unit ids) and/or `syndrome_class` (e.g. "NECROMANCER" picks every
+    citizen carrying a syndrome of that class). `action` is 'add' or 'remove'."""
+    from burrows import fetch_burrows_intel
+
+    def bad(reason):
+        return _render(_plan(False, "", reason=reason), mode, confirm, host, port)
+
+    # 1. Validate inputs python-side for friendly messages (the Lua revalidates).
+    action = (action or "").strip().lower()
+    if action not in ("add", "remove"):
+        return bad("action must be 'add' or 'remove'")
+    ids = []
+    for u in units or []:
+        try:
+            ids.append(int(u))
+        except (TypeError, ValueError):
+            return bad(f"unit id {u!r} must be an integer")
+    syndrome_class = (syndrome_class or "").strip().upper()
+    if not ids and not syndrome_class:
+        return bad("give units (a list of unit ids) and/or a syndrome_class")
+
+    # 2. Read the live burrows + citizens.
+    data = fetch_burrows_intel(host=host, port=port)
+    if not data.get("fort_loaded"):
+        return bad("no fortress is loaded")
+    burrows = [as_map(b) for b in (data.get("burrows") or [])]
+    if not burrows:
+        return bad("this fort has no burrows; create one in-game first")
+
+    # 3. Resolve the burrow: numeric id, else exact (case-insensitive) name.
+    target = None
+    text = str(burrow).strip()
+    if text.lstrip("#").isdigit():
+        want = int(text.lstrip("#"))
+        target = next((b for b in burrows if b.get("id") == want), None)
+    else:
+        named = [b for b in burrows if (b.get("name") or "").lower() == text.lower()]
+        if len(named) > 1:
+            return bad(f"{len(named)} burrows are named {text!r}; use the id")
+        target = named[0] if named else None
+    if target is None:
+        listing = ", ".join(f"#{b.get('id')} {b.get('name') or '(unnamed)'}"
+                            for b in burrows)
+        return bad(f"no burrow matches {burrow!r}; burrows: {listing}")
+    bid = target.get("id")
+
+    # 4. Resolve the units.
+    cits = {c.get("id"): c for c in (as_map(c) for c in (data.get("citizens") or []))}
+    chosen, seen = [], set()
+    for i in ids:
+        if i not in cits:
+            return bad(f"unit {i} is not a living citizen")
+        if i not in seen:
+            seen.add(i)
+            chosen.append(i)
+    if syndrome_class:
+        matched = [cid for cid, c in cits.items()
+                   if syndrome_class in [s.upper() for s in c.get("syn_classes") or []]]
+        if not matched and not ids:
+            return bad(f"no citizen carries a {syndrome_class!r} syndrome")
+        for cid in matched:
+            if cid not in seen:
+                seen.add(cid)
+                chosen.append(cid)
+    if len(chosen) > _BURROW_MAX_UNITS:
+        return bad(f"{len(chosen)} units selected; the limit is "
+                   f"{_BURROW_MAX_UNITS} per call")
+
+    # 5. Work out what would actually change.
+    adding = (action == "add")
+    todo, noop = [], []
+    for cid in chosen:
+        c = cits[cid]
+        member = bid in (c.get("burrows") or [])
+        (noop if member == adding else todo).append(c)
+    if not todo:
+        state = "already assigned to" if adding else "not in"
+        return bad(f"all {len(chosen)} selected unit(s) are {state} that burrow")
+
+    bname = target.get("name") or "(unnamed)"
+    verb = "Assign" if adding else "Remove"
+    prep = "to" if adding else "from"
+    changes = [f"#{c.get('id')} {c.get('name')} ({c.get('profession')}): "
+               f"{'not assigned -> assigned' if adding else 'assigned -> not assigned'}"
+               for c in todo]
+    facts = [f"burrow #{bid} '{bname}': {target.get('units', 0)} unit(s) assigned, "
+             f"{target.get('blocks', 0)} map block(s)",
+             f"{len(todo)} of {len(chosen)} selected unit(s) would change"
+             + (f" ({len(noop)} already in that state)" if noop else "")]
+    if syndrome_class:
+        facts.append(f"selected by syndrome class {syndrome_class}"
+                     + (" plus explicit ids" if ids else ""))
+    facts.append("note: burrow assignment can restrict where these dwarves work and "
+                 "move (and which alerts apply to them) -- check the burrow's tiles "
+                 "before assigning many units")
+
+    plan = _plan(
+        True, f"{verb} {len(todo)} unit(s) {prep} burrow #{bid} '{bname}'.",
+        facts=facts, changes=changes,
+        advice=["In-game: open the burrows panel, select the burrow, and use its "
+                "unit-assignment option to tick or untick each dwarf listed."],
+        action_script="set_burrow_units.lua",
+        action_payload={"burrow_id": bid, "expect_name": target.get("name") or "",
+                        "action": action, "unit_ids": [c.get("id") for c in todo]},
+        render_result=_format_burrow_result,
     )
     return _render(plan, mode, confirm, host, port)

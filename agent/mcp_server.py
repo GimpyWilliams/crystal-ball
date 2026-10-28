@@ -12,8 +12,9 @@ process is the loopback DFHack RPC socket on 127.0.0.1:5000.
 
 Almost every tool here is read-only. The exception is a small, clearly-delimited
 set of "act" tools (queue_work_order, auto_stock_target, fix_idle,
-manage_containers, boost_mood) that can create manager orders -- but only when
-called with mode='apply' AND confirm=True. In their default mode they are
+manage_containers, boost_mood, manage_hospital_supplies, set_hotkey,
+rename_stockpiles, set_stockpile_settings, assign_burrow_units) that make reversible
+writes -- but only when called with mode='apply' AND confirm=True. In their default mode they are
 read-only (advise/preview). All writes go through actions.run_action(), which
 runs only audited mutation scripts and validates every enum before mutating. No
 further write tools must be added without explicit instruction.
@@ -136,7 +137,10 @@ from trade import (
     format_trade_history_report,
 )
 from agreements import fetch_agreements_intel, format_agreements_report
+from burrows import fetch_burrows_intel, format_burrows_report
+from minecart import fetch_minecart_status, format_minecart_status
 from mutations import (
+    assign_burrow_units as _assign_burrow_units,
     auto_stock_target as _auto_stock_target,
     boost_mood as _boost_mood,
     fix_idle as _fix_idle,
@@ -1036,15 +1040,17 @@ def agreements_data() -> dict:
 @mcp.tool()
 def queue_work_order(job: str, amount: int = 10, material: str = "any",
                      frequency: str = "one-time", mode: str = "advise",
-                     confirm: bool = False) -> str:
+                     confirm: bool = False, item: str = "") -> str:
     """Create a single manager work order. `job` is a df.job_type name
     (e.g. 'MakeCrafts', 'BrewDrink', 'WeaveCloth'); `material` is a class like
     stone/wood/cloth or 'any'; `frequency` is one-time/daily/monthly/seasonal/
-    yearly. mode='advise' (default) explains it + manual steps; mode='preview'
-    shows the exact order; mode='apply' with confirm=true WRITES it (reversible:
-    cancel in-game). WRITES ONLY in apply+confirm."""
+    yearly. `item` pins the product for subtype-chosen jobs, by name: e.g.
+    job='MakeTool', item='minecart', material='wood'. mode='advise' (default)
+    explains it + manual steps; mode='preview' shows the exact order;
+    mode='apply' with confirm=true WRITES it (reversible: cancel in-game).
+    WRITES ONLY in apply+confirm."""
     return _safe2(_queue_work_order, job, amount, material, frequency, mode,
-                  confirm)
+                  confirm, item)
 
 
 @mcp.tool()
@@ -1052,8 +1058,10 @@ def auto_stock_target(item: str, target: int, job: str = "", material: str = "an
                       frequency: str = "daily", mode: str = "advise",
                       confirm: bool = False) -> str:
     """Keep at least `target` of an item on hand via a conditional repeat order
-    ('when AMOUNT < target'). `item` is a df.item_type name (e.g. 'DRINK'); for
-    items other than DRINK pass the producing `job`. mode advise/preview are
+    ('when AMOUNT < target'). `item` is a df.item_type name (e.g. 'DRINK') or a
+    subtype name (e.g. 'minecart', which pins the order and its condition to
+    minecarts); for items other than DRINK pass the producing `job` (minecart:
+    job='MakeTool', material='wood'). mode advise/preview are
     read-only; mode='apply' with confirm=true WRITES the standing order."""
     return _safe2(_auto_stock_target, item, target, job or None, material,
                   frequency, mode, confirm)
@@ -1114,6 +1122,55 @@ def set_hotkey(key_id: int, name: str, x: int = 0, y: int = 0, z: int = 0,
 
 
 @mcp.tool()
+def burrows_report() -> str:
+    """Burrows in the loaded fort: id, name, size and how many units are assigned
+    to each, plus counts of citizens by syndrome class (e.g. NECROMANCER), which
+    assign_burrow_units can select as a group. Read-only."""
+    return _safe(format_burrows_report, fetch_burrows_intel)
+
+
+@mcp.tool()
+def burrows_data() -> dict:
+    """Same burrow listing as structured JSON: burrows[] (id, name, blocks, units)
+    and citizens[] (id, name, profession, burrows[], syn_classes[])."""
+    return fetch_burrows_intel()
+
+
+@mcp.tool()
+def minecart_report(z: int = 20) -> str:
+    """Minecart logistics status: minecart items and whether each rides a route,
+    hauling routes with their stops and linked stockpiles, track stops and
+    rollers, open minecart orders, 1x1 (quantum) stockpiles, and how many dig
+    designations remain on level `z` (default 20, the strip-mine grid; -1 to
+    skip). Read-only."""
+    return _safe(format_minecart_status, lambda: fetch_minecart_status(z))
+
+
+@mcp.tool()
+def minecart_data(z: int = 20) -> dict:
+    """Same minecart status as structured JSON: carts[], routes[] (with stops[]),
+    trackstops[], rollers, orders[], quantum[], dig {z, total, by_type}."""
+    return fetch_minecart_status(z)
+
+
+@mcp.tool()
+def assign_burrow_units(burrow: str, units: list[int] | None = None,
+                        syndrome_class: str = "", action: str = "add",
+                        mode: str = "advise", confirm: bool = False) -> str:
+    """Add citizens to, or remove them from, an EXISTING burrow (reversible).
+    `burrow` is a burrow id (see burrows_report) or an exact name. Select units
+    with `units` (list of unit ids) and/or `syndrome_class` (e.g. "NECROMANCER"
+    selects every citizen carrying a syndrome of that class). `action` is 'add'
+    (default) or 'remove'; at most 200 units per call. Never creates, deletes,
+    renames or re-tiles a burrow, and touches no unit not selected. Apply refuses
+    a burrow renamed since the preview and writes nothing if any unit is invalid.
+    mode='advise' (default) and 'preview' are read-only; mode='apply' with
+    confirm=true WRITES. Undo with the opposite action on the same unit ids."""
+    return _safe2(_assign_burrow_units, burrow, units, syndrome_class, action,
+                  mode, confirm)
+
+
+@mcp.tool()
 def rename_stockpiles(renames: dict, mode: str = "advise",
                       confirm: bool = False) -> str:
     """Rename stockpiles (label only, reversible). `renames` maps a stockpile
@@ -1135,13 +1192,15 @@ def set_stockpile_settings(piles: dict, mode: str = "advise",
     enables Furniture), furniture_except (every type but these), untick_types
     (list to turn off) or disable_furniture (true), plus optional
     finished_goods_types (exact df.item_type list, e.g. ["TOOL"]; enables
-    Finished goods), min_quality (e.g. "FinelyCrafted"; applies to the
+    Finished goods), finished_goods_untick (list of item types to turn off,
+    leaving the rest ticked) or disable_finished_goods (true) -- at most one
+    of those three -- min_quality (e.g. "FinelyCrafted"; applies to the
     categories being set) and max_bins / max_barrels / max_wheelbarrows, e.g.
     {"53": {"furniture_types": ["BARREL"], "max_barrels": 0}}. Changes only the
     Furniture, Finished goods and Coins filters. Material filters:
     finished_goods_materials (inorganic ids such as "GOLD", or "@METAL" /
     "@NONMETAL"), finished_goods_materials_except, finished_goods_other_materials
-    (true/false for wood, bone, glass etc.) and coin_materials (enables Coins). Never touches
+    (true/false for wood, bone, glass etc.) and coin_materials (enables Coins). Stone category filters (pile must already accept Stone): stone_materials (tick only these) or stone_untick (turn these off), each a list of inorganic ids or the class tokens "@ORE" (metal-ore stone), "@ECONOMIC" (flux, fuel and other economic stone), "@PLAIN" (everything else) Never touches
     other categories, names, extents or links. Apply refuses any pile renamed
     since the preview and writes nothing if any entry is invalid.
     mode='advise' (default) and 'preview' are read-only; mode='apply' with
@@ -1185,6 +1244,8 @@ if __name__ == "__main__":
             ("diagnose_justice", diagnose_justice),
             ("zones_report", zones_report),
             ("hotkeys_report", hotkeys_report),
+            ("burrows_report", burrows_report),
+            ("minecart_report", minecart_report),
             ("stock_report", stock_report),
             ("stock_report(TOOL)", lambda: stock_report("TOOL")),
             ("container_report", container_report),

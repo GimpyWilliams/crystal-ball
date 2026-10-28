@@ -22,6 +22,8 @@ Reports:
     mood        strange-mood status: who's moody + what their job demands
     zones       zones & locations (taverns/temples/hospital/library) + civzones
     hotkeys     all 16 F-key map bookmarks (name + coordinates)
+    burrows     burrows + assigned-unit counts + citizens by syndrome class
+    minecarts [z]  carts, routes, track stops, quantum piles, dig left on z (20)
     dwarf <sel> deep profile of one dwarf (id or name substring)
     labor <nm>  who can do a labor (df.unit_labor name; default BREW)
     artifact <sel>  locate one artifact (id or name) + its current location
@@ -29,13 +31,16 @@ Reports:
     faith <sel>     a dwarf's worshipped deity/deities + the temple to honor it
 
 Act subcommands (default = advise; writes need both --apply and --confirm):
-    queue-order <job> <amount> [material]   create one manager order
+    queue-order <job> <amount> [material] [item]   create one manager order
+                (item pins a subtype: queue-order MakeTool 6 wood minecart)
     stock-target <item> <target> [job]      keep >= target of item on hand
     fix-idle                                put idle dwarves to work
     containers-fix                          queue pots/bins when storage is full
     boost-mood                              top up alcohol + mood advice
     hospital-supplies <field> <max> ...     set hospital supply maximum(s)
     set-hotkey <key_id> <name> <x> <y> <z> set/clear an F-key map bookmark
+    assign-burrow <burrow> <add|remove> <ids | syndrome:CLASS>
+                                            add/remove units in an existing burrow
     rename-stockpiles <file.json>           rename piles from {"16": "FURN-Stone"}
     stockpile-settings <file.json>          furniture types / caps, e.g.
                                             {"53": {"furniture_types": ["BARREL"]}}
@@ -109,6 +114,8 @@ from announcements import fetch_announcements, format_announcements
 from mood import fetch_mood, format_mood
 from zones import fetch_zones_intel, format_zones_report
 from hotkeys import fetch_hotkeys_intel, format_hotkeys_report
+from burrows import fetch_burrows_intel, format_burrows_report
+from minecart import fetch_minecart_status, format_minecart_status
 from legends import (
     fetch_artifact,
     fetch_deity,
@@ -118,6 +125,7 @@ from legends import (
     format_faith,
 )
 from mutations import (
+    assign_burrow_units,
     auto_stock_target,
     boost_mood,
     fix_idle,
@@ -160,6 +168,9 @@ _REPORTS = {
     "mood": (lambda *a: fetch_mood(), format_mood),
     "zones": (lambda *a: fetch_zones_intel(), format_zones_report),
     "hotkeys": (lambda *a: fetch_hotkeys_intel(), format_hotkeys_report),
+    "burrows": (lambda *a: fetch_burrows_intel(), format_burrows_report),
+    "minecarts": (lambda *a: fetch_minecart_status(int(a[0]) if a else 20),
+                  format_minecart_status),
     "dwarf": (lambda *a: fetch_dwarf_detail(a[0] if a else ""),
               format_dwarf_detail),
     "labor": (lambda *a: fetch_labor_coverage(a[0] if a else "BREWER"),
@@ -197,10 +208,25 @@ def _load_renames(path: str) -> dict:
         return json.load(f)
 
 
+def _assign_burrow(a: list[str], mode: str, confirm: bool) -> str:
+    """assign-burrow <burrow> <add|remove> <ids,comma,sep | syndrome:CLASS>."""
+    if len(a) < 3:
+        raise ValueError("assign-burrow takes <burrow> <add|remove> "
+                         "<id,id,... | syndrome:CLASS>")
+    sel = a[2]
+    if sel.lower().startswith("syndrome:"):
+        units, cls = None, sel.split(":", 1)[1]
+    else:
+        units, cls = [int(x) for x in sel.split(",") if x], ""
+    return assign_burrow_units(a[0], units, cls, a[1], mode=mode, confirm=confirm)
+
+
 _ACTIONS = {
+    "assign-burrow": _assign_burrow,
     "queue-order": lambda a, m, c: queue_work_order(
         a[0], int(a[1]) if len(a) > 1 else 10,
-        a[2] if len(a) > 2 else "any", mode=m, confirm=c),
+        a[2] if len(a) > 2 else "any", mode=m, confirm=c,
+        item=a[3] if len(a) > 3 else ""),
     "stock-target": lambda a, m, c: auto_stock_target(
         a[0], int(a[1]), a[2] if len(a) > 2 else None, mode=m, confirm=c),
     "fix-idle": lambda a, m, c: fix_idle(mode=m, confirm=c),

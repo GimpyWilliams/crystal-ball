@@ -13,13 +13,21 @@
 --              "disable_furniture":true,          -- or: turn Furniture off
 --              "finished_goods_types":["TOOL"],   -- exact df.item_type set;
 --                                                 --   enables Finished goods
+--              "finished_goods_untick":["INSTRUMENT"], -- or: turn just these off
+--              "disable_finished_goods":true,     -- or: turn Finished goods off
 --              "finished_goods_materials":["GOLD"],  -- inorganic ids, or the
 --                  tokens "@METAL" / "@NONMETAL"; ticks only these materials
 --              "finished_goods_materials_except":["SILVER"], -- then un-ticks these
 --              "finished_goods_other_materials":false, -- wood/bone/glass etc.
 --              "coin_materials":["SILVER"],       -- enables Coins, only these
+--              "stone_materials":["@ORE","@ECONOMIC"], -- Stone category: ticks
+--                  only these (inorganic ids, or the class tokens @ORE = any
+--                  metal-ore stone, @ECONOMIC = other economic stone such as
+--                  flux and fuel, @PLAIN = everything else); needs Stone enabled
+--              "stone_untick":["@PLAIN"],         -- or: turn just these off
 --              "min_quality":"FinelyCrafted",     -- lowest ticked quality
 --              "max_bins":0,"max_barrels":0,"max_wheelbarrows":0}]}
+-- stone_materials and stone_untick are mutually exclusive.
 -- At most one of the four furniture modes per pile; every other field is
 -- optional. min_quality applies to each of Furniture / Finished goods that the
 -- entry sets types for, or, if it sets none, to whichever is already enabled.
@@ -106,6 +114,8 @@ local function snapshot(b)
         function(i) return df.item_type[i] end)
     s.fg_mat_count = #ticked(b.settings.finished_goods.mats, function(i) return i end)
     s.fg_other_mat_count = #ticked(b.settings.finished_goods.other_mats, function(i) return i end)
+    s.stone = b.settings.flags.stone
+    s.stone_mat_count = #ticked(b.settings.stone.mats, function(i) return i end)
     s.coins = b.settings.flags.coins
     s.coin_mat_count = #ticked(b.settings.coins.mats, function(i) return i end)
     s.furniture_qualities = ticked(b.settings.furniture.quality_core,
@@ -123,6 +133,41 @@ for i = 0, #INORG - 1 do
     INORG_IDX[INORG[i].id] = i
     local ok, v = pcall(function() return INORG[i].material.flags.IS_METAL end)
     IS_METAL[i] = ok and v == true
+end
+
+-- Stone classes for the Stone category: ORE = any metal-ore stone, ECONOMIC =
+-- other economic stone (flux, fuel...), PLAIN = remaining IS_STONE materials.
+local STONE_CLASS = {}
+for i = 0, #INORG - 1 do
+    local m = INORG[i]
+    local okS, isStone = pcall(function() return m.material.flags.IS_STONE end)
+    if okS and isStone then
+        local c = 'PLAIN'
+        pcall(function()
+            if #m.metal_ore.mat_index > 0 then c = 'ORE'
+            elseif #m.economic_uses > 0 then c = 'ECONOMIC' end
+        end)
+        STONE_CLASS[i] = c
+    end
+end
+
+local function resolve_stone(list, label, what)
+    if type(list) ~= 'table' or #list == 0 then
+        fail(label .. ': ' .. what .. ' must be a non-empty list'); return nil
+    end
+    local set = {}
+    for _, n in ipairs(list) do
+        n = tostring(n)
+        local cls = n:match('^@(%u+)$')
+        if cls == 'ORE' or cls == 'ECONOMIC' or cls == 'PLAIN' then
+            for i, c in pairs(STONE_CLASS) do if c == cls then set[i] = true end end
+        elseif INORG_IDX[n] and STONE_CLASS[INORG_IDX[n]] then
+            set[INORG_IDX[n]] = true
+        else
+            fail(label .. ': unknown stone ' .. n); return nil
+        end
+    end
+    return set
 end
 
 local function resolve_mats(list, label, what)
@@ -170,6 +215,8 @@ for idx, p in ipairs(spec.piles) do
     local b = num and piles[num]
     local modes = (p.furniture_types and 1 or 0) + (p.untick_types and 1 or 0)
         + (p.furniture_except and 1 or 0) + (p.disable_furniture and 1 or 0)
+    local fg_modes = (p.finished_goods_types and 1 or 0)
+        + (p.finished_goods_untick and 1 or 0) + (p.disable_finished_goods and 1 or 0)
     local ok = true
     if not num or num ~= math.floor(num) then
         fail(label .. ': number must be an integer'); ok = false
@@ -185,6 +232,17 @@ for idx, p in ipairs(spec.piles) do
             .. 'untick_types, disable_furniture'); ok = false
     elseif p.untick_types and not b.settings.flags.furniture then
         fail(label .. ': untick_types needs Furniture already enabled'); ok = false
+    elseif fg_modes > 1 then
+        fail(label .. ': give only one of finished_goods_types, '
+            .. 'finished_goods_untick, disable_finished_goods'); ok = false
+    elseif p.finished_goods_untick and not b.settings.flags.finished_goods then
+        fail(label .. ': finished_goods_untick needs Finished goods already enabled')
+        ok = false
+    elseif p.disable_finished_goods and (p.finished_goods_materials
+            or p.finished_goods_materials_except
+            or p.finished_goods_other_materials ~= nil) then
+        fail(label .. ': disable_finished_goods cannot be combined with '
+            .. 'finished-goods material filters'); ok = false
     end
     local entry = { b = b, num = num, caps = {} }
     if ok and p.furniture_types then
@@ -215,6 +273,13 @@ for idx, p in ipairs(spec.piles) do
                 label, 'item type')
             ok = entry.fg ~= nil
         end
+    end
+    if ok and p.finished_goods_untick then
+        entry.fg_unset = resolve(p.finished_goods_untick, df.item_type,
+            #b.settings.finished_goods.type, label, 'item type')
+        ok = entry.fg_unset ~= nil
+    elseif ok and p.disable_finished_goods then
+        entry.fg_disable = true
     end
     if ok and p.finished_goods_materials then
         entry.fg_mats = resolve_mats(p.finished_goods_materials, label,
@@ -249,6 +314,21 @@ for idx, p in ipairs(spec.piles) do
             fail(label .. ': no configured Coins pile to size from'); ok = false
         end
     end
+    if ok and (p.stone_materials or p.stone_untick) then
+        if p.stone_materials and p.stone_untick then
+            fail(label .. ': give only one of stone_materials, stone_untick')
+            ok = false
+        elseif not b.settings.flags.stone then
+            fail(label .. ': stone filters need the Stone category enabled')
+            ok = false
+        elseif p.stone_materials then
+            entry.stone_set = resolve_stone(p.stone_materials, label, 'stone_materials')
+            ok = entry.stone_set ~= nil
+        else
+            entry.stone_unset = resolve_stone(p.stone_untick, label, 'stone_untick')
+            ok = entry.stone_unset ~= nil
+        end
+    end
     if ok and p.min_quality ~= nil then
         local q = df.item_quality[tostring(p.min_quality)]
         if type(q) ~= 'number' or q < 0 or q >= N_QUAL then
@@ -276,8 +356,9 @@ for idx, p in ipairs(spec.piles) do
         end
     end
     if ok and not (entry.set or entry.unset or entry.disable or entry.fg
-            or entry.minq or entry.fg_mats or entry.fg_other ~= nil
-            or entry.coin_mats or next(entry.caps)) then
+            or entry.fg_unset or entry.fg_disable or entry.minq or entry.fg_mats or entry.fg_other ~= nil
+            or entry.coin_mats or entry.stone_set or entry.stone_unset
+            or next(entry.caps)) then
         fail(label .. ': nothing to change'); ok = false
     end
     if ok then
@@ -339,6 +420,12 @@ for _, e in ipairs(plan) do
         end
         if e.fg then
             set_types(e.b, 'finished_goods', e.fg); touched.finished_goods = true
+        elseif e.fg_unset then
+            for i in pairs(e.fg_unset) do
+                put(e.b.settings.finished_goods.type, i, false)
+            end
+        elseif e.fg_disable then
+            e.b.settings.flags.finished_goods = false
         end
         if e.fg_mats or e.fg_other ~= nil then
             local s = e.b.settings.finished_goods
@@ -355,6 +442,13 @@ for _, e in ipairs(plan) do
                 enable_category(e.b, 'coins')
             end
             for i = 0, #s.mats - 1 do put(s.mats, i, e.coin_mats[i] == true) end
+        end
+        if e.stone_set then
+            local v = e.b.settings.stone.mats
+            for i = 0, #v - 1 do put(v, i, e.stone_set[i] == true) end
+        elseif e.stone_unset then
+            local v = e.b.settings.stone.mats
+            for i in pairs(e.stone_unset) do if i < #v then put(v, i, false) end end
         end
         if e.minq then
             local any = touched.furniture or touched.finished_goods
@@ -378,7 +472,12 @@ for _, e in ipairs(plan) do
                 if is_on(e.b.settings.furniture.type[i]) then good = false end
             end
         elseif e.disable then good = good and not after.furniture end
-        if e.fg then good = good and after.finished_goods and #after.fg_types == count(e.fg) end
+        if e.fg then good = good and after.finished_goods and #after.fg_types == count(e.fg)
+        elseif e.fg_unset then
+            for i in pairs(e.fg_unset) do
+                if is_on(e.b.settings.finished_goods.type[i]) then good = false end
+            end
+        elseif e.fg_disable then good = good and not after.finished_goods end
         if e.fg_mats then
             local n = 0 for _ in pairs(e.fg_mats) do n = n + 1 end
             if after.fg_mat_count ~= n then good = false end
@@ -389,6 +488,14 @@ for _, e in ipairs(plan) do
         if e.coin_mats then
             local n = 0 for _ in pairs(e.coin_mats) do n = n + 1 end
             if not after.coins or after.coin_mat_count ~= n then good = false end
+        end
+        if e.stone_set then
+            local n = 0 for _ in pairs(e.stone_set) do n = n + 1 end
+            if after.stone_mat_count ~= n then good = false end
+        elseif e.stone_unset then
+            for i in pairs(e.stone_unset) do
+                if is_on(e.b.settings.stone.mats[i]) then good = false end
+            end
         end
         if e.minq then
             for _, q in ipairs(after.furniture_qualities) do
