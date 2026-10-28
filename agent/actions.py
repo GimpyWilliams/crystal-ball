@@ -32,7 +32,8 @@ _PRELUDE = (_ACTIONS / "_prelude.lua").read_text(encoding="utf-8")
 
 
 def run_action(script_name: str, args: list[str] | None = None, *,
-               host: str = "127.0.0.1", port: int = 5000) -> dict:
+               host: str = "127.0.0.1", port: int = 5000,
+               timeout: float = 5.0) -> dict:
     """Run a bundled mutation Lua script by file name and return parsed JSON.
 
     `script_name` must name a file in scripts/actions/. It is never
@@ -42,7 +43,7 @@ def run_action(script_name: str, args: list[str] | None = None, *,
     """
     path = _ACTIONS / script_name
     lua = _PRELUDE + "\n" + path.read_text(encoding="utf-8")
-    with DFHackClient(host=host, port=port) as client:
+    with DFHackClient(host=host, port=port, timeout=timeout) as client:
         raw = client.run_command("lua", [lua, *(args or [])])
     try:
         return json.loads(raw)

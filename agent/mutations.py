@@ -199,7 +199,8 @@ def _apply(plan, confirm, host, port):
     if not confirm:
         return ("apply requires confirm=true (this WRITES to the live game).\n\n"
                 + _preview_body(plan))
-    res = run_action(script, [json.dumps(payload)], host=host, port=port)
+    res = run_action(script, [json.dumps(payload)], host=host, port=port,
+                     timeout=plan.get("action_timeout", 5.0))
     renderer = plan.get("render_result") or _format_result
     return renderer(res)
 
@@ -1251,6 +1252,9 @@ def assign_burrow_units(burrow, units=None, syndrome_class="", action="add",
 
 _BLUEPRINTS = Path(__file__).resolve().parent / "blueprints"
 _BP_MODES = ("dig", "place", "build")
+# Placing a track stop on a route imports stockpile presets, which can run past
+# the default 5s socket timeout while still succeeding in game.
+_BP_TIMEOUT = 30.0
 
 
 def list_blueprints():
@@ -1313,7 +1317,7 @@ def run_blueprint(name, phases="", undo=False, mode="advise", confirm=False,
     # Dry run: quickfort validates every cell against the live map, writes nothing.
     dry = run_action("run_blueprint.lua", [json.dumps(
         {"command": command, "dry_run": True, "phases": chosen})],
-        host=host, port=port)
+        host=host, port=port, timeout=_BP_TIMEOUT)
     if dry.get("errors"):
         return _render(_plan(False, "", reason="dry run failed: "
                              + "; ".join(dry["errors"])), mode, confirm, host, port)
@@ -1348,4 +1352,5 @@ def run_blueprint(name, phases="", undo=False, mode="advise", confirm=False,
         action_payload={"command": command, "dry_run": False, "phases": chosen},
         render_result=lambda res: _format_blueprint_result(res, undo),
     )
+    plan["action_timeout"] = _BP_TIMEOUT
     return _render(plan, mode, confirm, host, port)

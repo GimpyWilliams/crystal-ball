@@ -7,40 +7,176 @@
       "mode": "dig",
       "label": "Carve track x100, y85 to y103",
       "cells": [
-        [100, 85, 20, "trackS"],
-        [100, 86, 20, "trackNS"], [100, 87, 20, "trackNS"], [100, 88, 20, "trackNS"],
-        [100, 89, 20, "trackNS"], [100, 90, 20, "trackNS"], [100, 91, 20, "trackNS"],
-        [100, 92, 20, "trackNS"], [100, 93, 20, "trackNS"], [100, 94, 20, "trackNS"],
-        [100, 95, 20, "trackNS"], [100, 96, 20, "trackNS"], [100, 97, 20, "trackNS"],
-        [100, 98, 20, "trackNS"], [100, 99, 20, "trackNS"], [100, 100, 20, "trackNS"],
-        [100, 101, 20, "trackNS"], [100, 102, 20, "trackNS"],
-        [100, 103, 20, "trackN"]
+        [
+          100,
+          85,
+          20,
+          "trackS"
+        ],
+        [
+          100,
+          86,
+          20,
+          "trackNS"
+        ],
+        [
+          100,
+          87,
+          20,
+          "trackNS"
+        ],
+        [
+          100,
+          88,
+          20,
+          "trackNS"
+        ],
+        [
+          100,
+          89,
+          20,
+          "trackNS"
+        ],
+        [
+          100,
+          90,
+          20,
+          "trackNS"
+        ],
+        [
+          100,
+          91,
+          20,
+          "trackNS"
+        ],
+        [
+          100,
+          92,
+          20,
+          "trackNS"
+        ],
+        [
+          100,
+          93,
+          20,
+          "trackNS"
+        ],
+        [
+          100,
+          94,
+          20,
+          "trackNS"
+        ],
+        [
+          100,
+          95,
+          20,
+          "trackNS"
+        ],
+        [
+          100,
+          96,
+          20,
+          "trackNS"
+        ],
+        [
+          100,
+          97,
+          20,
+          "trackNS"
+        ],
+        [
+          100,
+          98,
+          20,
+          "trackNS"
+        ],
+        [
+          100,
+          99,
+          20,
+          "trackNS"
+        ],
+        [
+          100,
+          100,
+          20,
+          "trackNS"
+        ],
+        [
+          100,
+          101,
+          20,
+          "trackNS"
+        ],
+        [
+          100,
+          102,
+          20,
+          "trackNS"
+        ],
+        [
+          100,
+          103,
+          20,
+          "trackN"
+        ]
       ]
     },
     {
       "mode": "place",
       "label": "Feeder pile G2-Feed (y85, x97-99) and quantum pile Q20 (100,104)",
       "cells": [
-        [97, 85, 20, "s{name=\"G2-Feed\" containers=0}:=metalore+economic+roughgems"],
-        [98, 85, 20, "s{name=\"G2-Feed\" containers=0}:=metalore+economic+roughgems"],
-        [99, 85, 20, "s{name=\"G2-Feed\" containers=0}:=metalore+economic+roughgems"],
-        [100, 104, 20, "s{name=\"Q20\" quantum=true give_to=\"ORE-Metal-Smelt,GEM-Rough,STONE-Marble-Mine\"}:=metalore+economic+roughgems"]
+        [
+          97,
+          85,
+          20,
+          "s{name=\"G2-Feed\" containers=0}:=metalore+economic+roughgems"
+        ],
+        [
+          98,
+          85,
+          20,
+          "s{name=\"G2-Feed\" containers=0}:=metalore+economic+roughgems"
+        ],
+        [
+          99,
+          85,
+          20,
+          "s{name=\"G2-Feed\" containers=0}:=metalore+economic+roughgems"
+        ],
+        [
+          100,
+          104,
+          20,
+          "s{name=\"Q20\" quantum=true give_to=\"ORE-Metal-Smelt,GEM-Rough,STONE-Marble-Mine\"}:=metalore+economic+roughgems"
+        ]
       ]
     },
     {
       "mode": "build",
-      "label": "Track stops: load (100,85), dump south (100,103)",
+      "label": "Track stops on route 'G2 pilot': load (100,85) from G2-Feed, dump south (100,103)",
       "after": "the track on x100 is carved",
       "cells": [
-        [100, 85, 20, "trackstop"],
-        [100, 103, 20, "trackstops"]
+        [
+          100,
+          85,
+          20,
+          "trackstop{route=\"G2 pilot\" take_from=\"G2-Feed\"}:=metalore+economic+roughgems"
+        ],
+        [
+          100,
+          103,
+          20,
+          "trackstops{route=\"G2 pilot\"}"
+        ]
       ]
     }
   ],
   "manual_steps": [
-    "Hauling route (Steam UI: Hauling > New route): stop 1 on (100,85,20), stop 2 on (100,103,20).",
-    "Stop 1: link it to take from G2-Feed; condition: leave when full. Stop 2: dump (the stop already dumps south).",
-    "Assign a cart: run `assign-minecarts all` in the DFHack console once a minecart exists.",
+    "Route 'G2 pilot' and both stops are created when the build phase is applied; stop 1 takes from G2-Feed.",
+    "Stop 1 departure condition (Steam UI: Hauling > G2 pilot > stop 1): leave when full. Quickfort sets no condition.",
+    "Assign a cart: run `assign-minecarts all` in the DFHack console.",
     "Undo: run this blueprint with undo=true, or remove the stops/piles in game."
   ]
 }
