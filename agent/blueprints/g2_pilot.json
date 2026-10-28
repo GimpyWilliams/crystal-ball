@@ -1,156 +1,56 @@
 {
   "title": "G2 pilot: x100 cart line on z20",
-  "description": "A 19-tile straight cart line on the dug x100 lane of the z20 strip-mine grid. A loading stop at the north end takes from a 3-tile feeder pile; the south stop dumps south into a 1x1 quantum pile Q20, which gives to the ore, gem and marble piles upstairs.",
-  "hotkey": "F2 'The River' (100,94,20)",
+  "description": "A 19-tile straight cart line on the dug x100 lane of the z20 strip-mine grid. A loading stop at the north end takes from a 10-tile feeder pile; the south stop dumps south into a 1x1 quantum pile Q20, which gives to the ore, gem and marble piles upstairs.",
+  "hotkey": "(100,94,20), the middle of the line (F2 now points at lift segment D)",
   "phases": [
     {
       "mode": "dig",
       "label": "Carve track x100, y85 to y103",
       "cells": [
-        [
-          100,
-          85,
-          20,
-          "trackS"
-        ],
-        [
-          100,
-          86,
-          20,
-          "trackNS"
-        ],
-        [
-          100,
-          87,
-          20,
-          "trackNS"
-        ],
-        [
-          100,
-          88,
-          20,
-          "trackNS"
-        ],
-        [
-          100,
-          89,
-          20,
-          "trackNS"
-        ],
-        [
-          100,
-          90,
-          20,
-          "trackNS"
-        ],
-        [
-          100,
-          91,
-          20,
-          "trackNS"
-        ],
-        [
-          100,
-          92,
-          20,
-          "trackNS"
-        ],
-        [
-          100,
-          93,
-          20,
-          "trackNS"
-        ],
-        [
-          100,
-          94,
-          20,
-          "trackNS"
-        ],
-        [
-          100,
-          95,
-          20,
-          "trackNS"
-        ],
-        [
-          100,
-          96,
-          20,
-          "trackNS"
-        ],
-        [
-          100,
-          97,
-          20,
-          "trackNS"
-        ],
-        [
-          100,
-          98,
-          20,
-          "trackNS"
-        ],
-        [
-          100,
-          99,
-          20,
-          "trackNS"
-        ],
-        [
-          100,
-          100,
-          20,
-          "trackNS"
-        ],
-        [
-          100,
-          101,
-          20,
-          "trackNS"
-        ],
-        [
-          100,
-          102,
-          20,
-          "trackNS"
-        ],
-        [
-          100,
-          103,
-          20,
-          "trackN"
-        ]
+        [100, 85, 20, "trackS"],
+        [100, 86, 20, "trackNS"],
+        [100, 87, 20, "trackNS"],
+        [100, 88, 20, "trackNS"],
+        [100, 89, 20, "trackNS"],
+        [100, 90, 20, "trackNS"],
+        [100, 91, 20, "trackNS"],
+        [100, 92, 20, "trackNS"],
+        [100, 93, 20, "trackNS"],
+        [100, 94, 20, "trackNS"],
+        [100, 95, 20, "trackNS"],
+        [100, 96, 20, "trackNS"],
+        [100, 97, 20, "trackNS"],
+        [100, 98, 20, "trackNS"],
+        [100, 99, 20, "trackNS"],
+        [100, 100, 20, "trackNS"],
+        [100, 101, 20, "trackNS"],
+        [100, 102, 20, "trackNS"],
+        [100, 103, 20, "trackN"]
       ]
     },
     {
+      "id": "feed",
       "mode": "place",
-      "label": "Feeder pile G2-Feed (y85, x97-99) and quantum pile Q20 (100,104)",
+      "label": "Feeder pile G2-Feed: 10 tiles on the y85 lane, x93-99 and x101-103 (stop 1 sits at x100)",
       "cells": [
-        [
-          97,
-          85,
-          20,
-          "s{name=\"G2-Feed\" containers=0}:=metalore+economic+roughgems"
-        ],
-        [
-          98,
-          85,
-          20,
-          "s{name=\"G2-Feed\" containers=0}:=metalore+economic+roughgems"
-        ],
-        [
-          99,
-          85,
-          20,
-          "s{name=\"G2-Feed\" containers=0}:=metalore+economic+roughgems"
-        ],
-        [
-          100,
-          104,
-          20,
-          "s{name=\"Q20\" quantum=true give_to=\"ORE-Metal-Smelt,GEM-Rough,STONE-Marble-Mine\"}:=metalore+economic+roughgems"
-        ]
+        [93, 85, 20, "s{name=\"G2-Feed\" containers=0}:=metalore+economic+roughgems"],
+        [94, 85, 20, "s{name=\"G2-Feed\" containers=0}:=metalore+economic+roughgems"],
+        [95, 85, 20, "s{name=\"G2-Feed\" containers=0}:=metalore+economic+roughgems"],
+        [96, 85, 20, "s{name=\"G2-Feed\" containers=0}:=metalore+economic+roughgems"],
+        [97, 85, 20, "s{name=\"G2-Feed\" containers=0}:=metalore+economic+roughgems"],
+        [98, 85, 20, "s{name=\"G2-Feed\" containers=0}:=metalore+economic+roughgems"],
+        [99, 85, 20, "s{name=\"G2-Feed\" containers=0}:=metalore+economic+roughgems"],
+        [101, 85, 20, "s{name=\"G2-Feed\" containers=0}:=metalore+economic+roughgems"],
+        [102, 85, 20, "s{name=\"G2-Feed\" containers=0}:=metalore+economic+roughgems"],
+        [103, 85, 20, "s{name=\"G2-Feed\" containers=0}:=metalore+economic+roughgems"]
+      ]
+    },
+    {
+      "id": "q20",
+      "mode": "place",
+      "label": "Quantum pile Q20 (100,104), gives to ORE-Metal-Smelt, GEM-Rough, STONE-Marble-Mine",
+      "cells": [
+        [100, 104, 20, "s{name=\"Q20\" quantum=true give_to=\"ORE-Metal-Smelt,GEM-Rough,STONE-Marble-Mine\"}:=metalore+economic+roughgems"]
       ]
     },
     {
@@ -158,25 +58,61 @@
       "label": "Track stops on route 'G2 pilot': load (100,85) from G2-Feed, dump south (100,103)",
       "after": "the track on x100 is carved",
       "cells": [
-        [
-          100,
-          85,
-          20,
-          "trackstop{route=\"G2 pilot\" take_from=\"G2-Feed\"}:=metalore+economic+roughgems"
-        ],
-        [
-          100,
-          103,
-          20,
-          "trackstops{route=\"G2 pilot\"}"
-        ]
+        [100, 85, 20, "trackstop{route=\"G2 pilot\" take_from=\"G2-Feed\"}:=metalore+economic+roughgems"],
+        [100, 103, 20, "trackstops{route=\"G2 pilot\"}"]
       ]
+    },
+    {
+      "mode": "build_now",
+      "label": "Finish building both track stops now (DFHack build-now; materials already attached)",
+      "after": "the build phase is placed",
+      "area": [
+        [100, 85, 20],
+        [100, 103, 20]
+      ]
+    },
+    {
+      "mode": "route",
+      "label": "Stop 1: take from G2-Feed, push south when full. Stop 2: push north when empty",
+      "after": "the build phase is placed",
+      "route": "G2 pilot",
+      "stops": [
+        {
+          "pos": [100, 85, 20],
+          "conditions": [
+            {
+              "mode": "Push",
+              "direction": "South",
+              "load": "full"
+            }
+          ],
+          "take_from": [
+            "G2-Feed"
+          ]
+        },
+        {
+          "pos": [100, 103, 20],
+          "conditions": [
+            {
+              "mode": "Push",
+              "direction": "North",
+              "load": "empty"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "assign_carts",
+      "label": "Put a free minecart on route 'G2 pilot' (DFHack assign-minecarts)",
+      "after": "the stops are built",
+      "route": "G2 pilot"
     }
   ],
   "manual_steps": [
-    "Route 'G2 pilot' and both stops are created when the build phase is applied; stop 1 takes from G2-Feed.",
-    "Stop 1 departure condition (Steam UI: Hauling > G2 pilot > stop 1): leave when full. Quickfort sets no condition.",
-    "Assign a cart: run `assign-minecarts all` in the DFHack console.",
+    "The build phase creates route 'G2 pilot' with both stops; stop 1 takes from G2-Feed.",
+    "The route phase sets departure conditions; build_now finishes the stops; assign_carts puts a cart on the route.",
+    "A dwarf then carries the cart to stop 1; the route starts once it arrives.",
     "Undo: run this blueprint with undo=true, or remove the stops/piles in game."
   ]
 }

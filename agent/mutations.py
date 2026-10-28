@@ -1251,7 +1251,7 @@ def assign_burrow_units(burrow, units=None, syndrome_class="", action="add",
 # cells. advise/preview do a quickfort dry run, which validates without writing.
 
 _BLUEPRINTS = Path(__file__).resolve().parent / "blueprints"
-_BP_MODES = ("dig", "place", "build")
+_BP_MODES = ("dig", "place", "build", "route", "build_now", "assign_carts")
 # Placing a track stop on a route imports stockpile presets, which can run past
 # the default 5s socket timeout while still succeeding in game.
 _BP_TIMEOUT = 30.0
@@ -1278,6 +1278,11 @@ def _format_blueprint_result(res, undo=False):
     for c in created:
         st = ", ".join(f"{s.get('label')}: {s.get('value')}"
                        for s in c.get("stats") or []) or "nothing changed"
+        for tl in c.get("tiles") or []:
+            if "before" in tl:
+                st += (f"; {tl.get('shape')}: "
+                       f"{'; '.join(tl['before']) or 'none'} -> "
+                       f"{'; '.join(tl['after']) or 'none'}")
         lines.append(f"{verb} {c.get('mode')} phase '{c.get('label')}': {st}")
     if errs:
         lines.append("Problems:")
@@ -1304,7 +1309,7 @@ def run_blueprint(name, phases="", undo=False, mode="advise", confirm=False,
     bad = [p for p in want if p not in _BP_MODES and p not in ids]
     if bad:
         return _render(_plan(False, "", reason=(
-            f"unknown phase(s) {bad}; use dig, place, build"
+            f"unknown phase(s) {bad}; use dig, place, build, route, build_now, assign_carts"
             + (f" or a phase id: {', '.join(sorted(ids))}" if ids else ""))),
             mode, confirm, host, port)
     chosen = [ph for ph in bp.get("phases") or []
@@ -1330,9 +1335,15 @@ def run_blueprint(name, phases="", undo=False, mode="advise", confirm=False,
         st = ", ".join(f"{s.get('label')}: {s.get('value')}"
                        for s in c.get("stats") or []) or "nothing would change"
         tiles = c.get("tiles") or []
+        for t in tiles:
+            if "before" in t:
+                st += (f"; {t.get('shape')} at ({t['x']},{t['y']},{t['z']}): "
+                       f"{'; '.join(t['before']) or 'none'} -> "
+                       f"{'; '.join(t['after']) or 'none'}")
+        tiles = [t for t in tiles if "before" not in t]
         shapes = sorted({t.get("shape") for t in tiles})
         busy = [t for t in tiles if t.get("building")]
-        note = f"; tiles now {', '.join(shapes)}"
+        note = f"; tiles now {', '.join(shapes)}" if shapes else ""
         if busy:
             note += "; occupied by " + ", ".join(
                 f"{t['building']} at ({t['x']},{t['y']},{t['z']})" for t in busy)
