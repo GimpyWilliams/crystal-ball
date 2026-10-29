@@ -25,6 +25,8 @@
 --                  metal-ore stone, @ECONOMIC = other economic stone such as
 --                  flux and fuel, @PLAIN = everything else); needs Stone enabled
 --              "stone_untick":["@PLAIN"],         -- or: turn just these off
+--              "blocks_off":true,                 -- Bars/blocks pile: untick every
+--                  block material (stone, metal, glass, wood), leaving bars as is
 --              "min_quality":"FinelyCrafted",     -- lowest ticked quality
 --              "max_bins":0,"max_barrels":0,"max_wheelbarrows":0}]}
 -- stone_materials and stone_untick are mutually exclusive.
@@ -116,6 +118,9 @@ local function snapshot(b)
     s.fg_other_mat_count = #ticked(b.settings.finished_goods.other_mats, function(i) return i end)
     s.stone = b.settings.flags.stone
     s.stone_mat_count = #ticked(b.settings.stone.mats, function(i) return i end)
+    s.bars_blocks = b.settings.flags.bars_blocks
+    s.block_mat_count = #ticked(b.settings.bars_blocks.blocks_mats, function(i) return i end)
+        + #ticked(b.settings.bars_blocks.blocks_other_mats, function(i) return i end)
     s.coins = b.settings.flags.coins
     s.coin_mat_count = #ticked(b.settings.coins.mats, function(i) return i end)
     s.furniture_qualities = ticked(b.settings.furniture.quality_core,
@@ -329,6 +334,14 @@ for idx, p in ipairs(spec.piles) do
             ok = entry.stone_unset ~= nil
         end
     end
+    if ok and p.blocks_off then
+        if not b.settings.flags.bars_blocks then
+            fail(label .. ': blocks_off needs the Bars/blocks category enabled')
+            ok = false
+        else
+            entry.blocks_off = true
+        end
+    end
     if ok and p.min_quality ~= nil then
         local q = df.item_quality[tostring(p.min_quality)]
         if type(q) ~= 'number' or q < 0 or q >= N_QUAL then
@@ -336,6 +349,18 @@ for idx, p in ipairs(spec.piles) do
             ok = false
         else
             entry.minq = q
+        end
+    end
+    if ok and p.max_quality ~= nil then
+        local q = df.item_quality[tostring(p.max_quality)]
+        if type(q) ~= 'number' or q < 0 or q >= N_QUAL then
+            fail(label .. ': unknown quality ' .. tostring(p.max_quality))
+            ok = false
+        elseif entry.minq and q < entry.minq then
+            fail(label .. ': max_quality is below min_quality')
+            ok = false
+        else
+            entry.maxq = q
         end
     end
     if ok and entry.set and not b.settings.flags.furniture and not template_for('furniture') then
@@ -356,8 +381,8 @@ for idx, p in ipairs(spec.piles) do
         end
     end
     if ok and not (entry.set or entry.unset or entry.disable or entry.fg
-            or entry.fg_unset or entry.fg_disable or entry.minq or entry.fg_mats or entry.fg_other ~= nil
-            or entry.coin_mats or entry.stone_set or entry.stone_unset
+            or entry.fg_unset or entry.fg_disable or entry.minq or entry.maxq or entry.fg_mats or entry.fg_other ~= nil
+            or entry.coin_mats or entry.stone_set or entry.stone_unset or entry.blocks_off
             or next(entry.caps)) then
         fail(label .. ': nothing to change'); ok = false
     end
@@ -394,9 +419,11 @@ local function enable_category(b, cat)
     b.settings.flags[cat] = true
 end
 
-local function set_quality(s, minq)
+local function set_quality(s, minq, maxq)
+    minq = minq or 0
+    maxq = maxq or N_QUAL - 1
     for _, k in ipairs({ 'quality_core', 'quality_total' }) do
-        for i = 0, #s[k] - 1 do put(s[k], i, i >= minq) end
+        for i = 0, #s[k] - 1 do put(s[k], i, i >= minq and i <= maxq) end
     end
 end
 
@@ -450,11 +477,16 @@ for _, e in ipairs(plan) do
             local v = e.b.settings.stone.mats
             for i in pairs(e.stone_unset) do if i < #v then put(v, i, false) end end
         end
-        if e.minq then
+        if e.blocks_off then
+            local s = e.b.settings.bars_blocks
+            for i = 0, #s.blocks_mats - 1 do put(s.blocks_mats, i, false) end
+            for i = 0, #s.blocks_other_mats - 1 do put(s.blocks_other_mats, i, false) end
+        end
+        if e.minq or e.maxq then
             local any = touched.furniture or touched.finished_goods
             for _, cat in ipairs({ 'furniture', 'finished_goods' }) do
                 if touched[cat] or (not any and e.b.settings.flags[cat]) then
-                    set_quality(e.b.settings[cat], e.minq)
+                    set_quality(e.b.settings[cat], e.minq, e.maxq)
                 end
             end
         end
@@ -489,6 +521,7 @@ for _, e in ipairs(plan) do
             local n = 0 for _ in pairs(e.coin_mats) do n = n + 1 end
             if not after.coins or after.coin_mat_count ~= n then good = false end
         end
+        if e.blocks_off and after.block_mat_count ~= 0 then good = false end
         if e.stone_set then
             local n = 0 for _ in pairs(e.stone_set) do n = n + 1 end
             if after.stone_mat_count ~= n then good = false end
@@ -497,12 +530,15 @@ for _, e in ipairs(plan) do
                 if is_on(e.b.settings.stone.mats[i]) then good = false end
             end
         end
-        if e.minq then
+        if e.minq or e.maxq then
+            local lo, hi = e.minq or 0, e.maxq or N_QUAL - 1
             for _, q in ipairs(after.furniture_qualities) do
-                if touched.furniture and df.item_quality[q] < e.minq then good = false end
+                local v = df.item_quality[q]
+                if touched.furniture and (v < lo or v > hi) then good = false end
             end
             for _, q in ipairs(after.fg_qualities) do
-                if touched.finished_goods and df.item_quality[q] < e.minq then good = false end
+                local v = df.item_quality[q]
+                if touched.finished_goods and (v < lo or v > hi) then good = false end
             end
         end
         for k, v in pairs(e.caps) do if after[k] ~= v then good = false end end

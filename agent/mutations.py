@@ -806,6 +806,8 @@ def _format_settings_result(res):
                 fgs += f"; coins ({s.get('coin_mat_count')} materials)"
             if s.get("stone"):
                 fgs += f"; stone ({s.get('stone_mat_count')} materials)"
+            if s.get("bars_blocks"):
+                fgs += f"; blocks ({s.get('block_mat_count')} materials)"
             qs = ((s.get("fg_qualities") if s.get("finished_goods") else None)
                   or (s.get("furniture_qualities") if s.get("furniture") else None)
                   or [])
@@ -842,11 +844,11 @@ def set_stockpile_settings(piles, mode="advise", confirm=False,
         unknown = sorted(set(v) - set(_CAP_KEYS) - set(_FURN_MODES)
                          - {"finished_goods_types", "finished_goods_untick",
                             "disable_finished_goods", "min_quality",
-                            "finished_goods_materials",
+                            "max_quality", "finished_goods_materials",
                             "finished_goods_materials_except",
                             "finished_goods_other_materials",
                             "coin_materials", "stone_materials",
-                            "stone_untick"})
+                            "stone_untick", "blocks_off"})
         if unknown:
             errors.append(f"#{num}: unknown field(s) {', '.join(unknown)}")
             continue
@@ -887,6 +889,11 @@ def set_stockpile_settings(piles, mode="advise", confirm=False,
         if "finished_goods_materials_except" in entry                 and "finished_goods_materials" not in entry:
             errors.append(f"#{num}: finished_goods_materials_except needs "
                           "finished_goods_materials")
+        if "blocks_off" in v:
+            if v["blocks_off"] is not True:
+                errors.append(f"#{num}: blocks_off must be true")
+            else:
+                entry["blocks_off"] = True
         if "finished_goods_other_materials" in v:
             if not isinstance(v["finished_goods_other_materials"], bool):
                 errors.append(f"#{num}: finished_goods_other_materials must be "
@@ -900,6 +907,13 @@ def set_stockpile_settings(piles, mode="advise", confirm=False,
                               f"(use {', '.join(_QUALITIES)})")
             else:
                 entry["min_quality"] = q
+        if "max_quality" in v:
+            q = _norm_quality(v["max_quality"])
+            if q is None:
+                errors.append(f"#{num}: unknown quality {v['max_quality']!r} "
+                              f"(use {', '.join(_QUALITIES)})")
+            else:
+                entry["max_quality"] = q
         for cap in _CAP_KEYS:
             if cap in v:
                 try:
@@ -976,8 +990,14 @@ def set_stockpile_settings(piles, mode="advise", confirm=False,
             parts.append(f"Stone ({now}) -> only {', '.join(e['stone_materials'])}")
         if "stone_untick" in e:
             parts.append(f"Stone -> untick {', '.join(e['stone_untick'])}")
+        if e.get("blocks_off"):
+            parts.append("Bars/blocks -> untick all block materials (bars left as is)")
         if "min_quality" in e:
-            parts.append(f"quality -> {e['min_quality']} and better")
+            parts.append(f"quality -> {e['min_quality']} and better"
+                         + (f", up to {e['max_quality']}"
+                            if "max_quality" in e else ""))
+        elif "max_quality" in e:
+            parts.append(f"quality -> up to {e['max_quality']}")
         for cap in _CAP_KEYS:
             if cap in e:
                 parts.append(f"{cap[4:]} {sp.get(cap)} -> {e[cap]}")
@@ -986,7 +1006,8 @@ def set_stockpile_settings(piles, mode="advise", confirm=False,
                   and not (c == "finished_goods" and any(m in e for m in _FG_MODES))
                   and not ("coin_materials" in e and c == "coins")
                   and not (("stone_materials" in e or "stone_untick" in e)
-                           and c == "stone")]
+                           and c == "stone")
+                  and not (e.get("blocks_off") and c == "bars_blocks")]
         if others:
             parts.append(f"(other categories left as is: {', '.join(others)})")
         changes.append(f"{head}: " + "; ".join(parts))
@@ -1267,7 +1288,18 @@ def _load_blueprint(name):
     path = _BLUEPRINTS / f"{name}.json"
     if not path.is_file():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    bp = json.loads(path.read_text(encoding="utf-8"))
+    # "RECT x1 y1 x2 y2 z <text>" fills a rectangle with one cell text.
+    for ph in bp.get("phases") or []:
+        cells = ph.get("cells")
+        if isinstance(cells, str):
+            m = re.fullmatch(r"RECT (\d+) (\d+) (\d+) (\d+) (\d+) (.+)", cells.strip())
+            if not m:
+                raise ValueError(f"bad cells shorthand in {name}: {cells!r}")
+            x1, y1, x2, y2, z = (int(v) for v in m.groups()[:5])
+            ph["cells"] = [[x, y, z, m.group(6)]
+                           for y in range(y1, y2 + 1) for x in range(x1, x2 + 1)]
+    return bp
 
 
 def _format_blueprint_result(res, undo=False):
