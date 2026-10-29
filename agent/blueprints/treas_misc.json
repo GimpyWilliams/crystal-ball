@@ -1,0 +1,16 @@
+{
+  "title": "TREAS-Misc: catch-all vault pile for jewellery the metal piles cannot take (z111)",
+  "description": "Free floor east of TREAS-Silver on z111, x104-108 y95-98 (x103 left open as a walkway). Holds non-metal jewellery (wood, bone, shell, horn, tooth) and artifact pieces of ore stone that no TREAS pile accepts. Filters are set afterwards with the stockpile settings tool.",
+  "hotkey": "(106,96,111), east of TREAS-Silver",
+  "phases": [
+    {
+      "id": "misc", "mode": "place",
+      "label": "TREAS-Misc: finished goods in bins, x104-108 y95-98",
+      "cells": "RECT 104 95 108 98 111 g{name=\"TREAS-Misc\" bins=12}"
+    }
+  ],
+  "manual_steps": [
+    "After placing, run the stockpile tool on TREAS-Misc: finished_goods_types the seven jewellery types, finished_goods_materials [\"ILMENITE\",\"SCHIST\"], finished_goods_other_materials true.",
+    "Undo: run this blueprint with undo=true."
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "title": "Deep metal hall (z11): landing, bar, finished-goods and bin piles",
+  "description": "Stockpiles for the z11 smelting and forging hall (8 magma smelters x103-114 y103-108, 4 magma forges x103-108 y92-97). Q11 is the 1x1 landing tile under the planned drop chute at (100,104); smelters take from it. BAR-Deep holds bars in bins between smelters and forges. FG-Deep bins forge output and gives to the TREAS vault piles on z111. BIN-Deep stores empty bins.",
+  "hotkey": "(100,104,11), the chute landing in the z11 hall",
+  "phases": [
+    {
+      "id": "q11", "mode": "place",
+      "label": "Q11: 1x1 quantum landing at (100,104), ore, economic stone and rough gems",
+      "cells": [
+        [100, 104, 11, "s{name=\"Q11\" quantum=true}:=metalore+economic+roughgems"]
+      ]
+    },
+    {
+      "id": "bars", "mode": "place",
+      "label": "BAR-Deep: metal bars in bins, x110-118 y92-100",
+      "cells": "RECT 110 92 118 100 11 b{name=\"BAR-Deep\" bins=81}:=metalbars"
+    },
+    {
+      "id": "goods", "mode": "place",
+      "label": "FG-Deep: finished goods in bins, x97-102 y92-97, gives to the TREAS piles",
+      "cells": "RECT 97 92 102 97 11 g{name=\"FG-Deep\" bins=36 give_to=\"TREAS-Gem-Set,TREAS-Silver,TREAS-Gold,TREAS-Steel-Copper,TREAS-Artifact\"}"
+    },
+    {
+      "id": "bins", "mode": "place",
+      "label": "BIN-Deep: empty bins, x116-118 y104-106",
+      "cells": "RECT 116 104 118 106 11 u{name=\"BIN-Deep\"}"
+    }
+  ],
+  "manual_steps": [
+    "After placing, run the stockpile tool: BIN-Deep furniture_types [\"BIN\"]; BAR-Deep blocks_off true (the bar preset leaves stone blocks ticked); Q11 stone_untick [\"@PLAIN\"].",
+    "Workshop links (each workshop's menu): z11 smelters take from Q11; z11 forges take from BAR-Deep.",
+    "Q11 fills once the drop chute from z20 is dug; until then it stays empty.",
+    "Undo: run this blueprint with undo=true."
+  ]
+}
